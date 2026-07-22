@@ -9,36 +9,46 @@ import {
 import DateRangeFilter from "@/components/DateRangeFilter";
 import ExportCsvButton, { type ReportRow } from "@/components/ExportCsvButton";
 import ExportExcelButton from "@/components/ExportExcelButton";
+import { Suspense } from "react";
 
-function defaultRange() {
-  const end = new Date();
-  const start = new Date();
-  start.setDate(end.getDate() - 30);
-  const toISO = (d: Date) => d.toISOString().slice(0, 10);
-  return { dateStart: toISO(start), dateEnd: toISO(end) };
+function TabelaLoading() {
+  return (
+    <div className="w-full py-12 flex flex-col items-center justify-center gap-3 bg-white rounded-2xl shadow-sm border border-slate-100 mt-6">
+      <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-emerald-500" />
+      <p className="text-xs font-medium text-slate-500 animate-pulse">
+        A processar relatórios e cruzar dados...
+      </p>
+    </div>
+  );
 }
 
-export default async function RelatoriosPage({
-  searchParams,
-}: {
-  searchParams: { dateStart?: string; dateEnd?: string; cantina?: string };
-}) {
-  const session = await getSession();
-  if (!session) redirect("/login");
+interface SearchParams {
+  dateStart?: string;
+  dateEnd?: string;
+  cantina?: string;
+}
 
-  const defaults = defaultRange();
-  const dateStart = searchParams.dateStart || defaults.dateStart;
-  const dateEnd = searchParams.dateEnd || defaults.dateEnd;
-  const cantinaFiltro = searchParams.cantina || "todas";
+interface PageProps {
+  searchParams: Promise<SearchParams>;
+}
 
-  // Busca TODOS os registros do periodo de uma vez so (sem filtro de
-  // cantina no banco). O filtro e a lista de cantinas disponiveis sao
-  // resolvidos aqui em memoria, evitando duplicatas/inconsistencias.
+// 1. COMPONENTE ASSÍNCRONO: Só é chamado se o utilizador clicar em Consultar
+async function RelatoriosConteudo({ 
+  clientId, 
+  dateStart, 
+  dateEnd, 
+  cantinaFiltro 
+}: { 
+  clientId: string; 
+  dateStart: string; 
+  dateEnd: string; 
+  cantinaFiltro: string; 
+ }) {
   const [todosLogs, employees, mealTypes, empresas] = await Promise.all([
-    getMealLogsForReport(session.clientId, dateStart, `${dateEnd}T23:59:59`),
-    getEmployees(session.clientId),
-    getMealTypesMap(session.clientId),
-    getEmpresas(session.clientId),
+    getMealLogsForReport(clientId, dateStart, `${dateEnd}T23:59:59`),
+    getEmployees(clientId),
+    getMealTypesMap(clientId),
+    getEmpresas(clientId),
   ]);
 
   const employeeNames: Record<string, string> = {};
@@ -53,13 +63,7 @@ export default async function RelatoriosPage({
   const empresaNomes: Record<string, string> = {};
   for (const emp of empresas) empresaNomes[emp.client_entity_id] = emp.nome;
 
-  // Ignora refeicoes de colaboradores apagados (is_deleted = true)
   const logsValidos = todosLogs.filter((l) => employeeNames[l.employee_id] !== undefined);
-
-  // Lista de cantinas derivada dos proprios dados (evita duplicatas)
-  const cantinasDisponiveis = Array.from(
-    new Set(logsValidos.map((l) => l.cantina).filter(Boolean))
-  ).sort((a, b) => a.localeCompare(b));
 
   const logsFiltrados = logsValidos.filter(
     (l) => cantinaFiltro === "todas" || l.cantina === cantinaFiltro
@@ -78,43 +82,16 @@ export default async function RelatoriosPage({
   const total = rows.reduce((acc, r) => acc + r.valor, 0);
 
   return (
-    <div>
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-800">Relatorios</h1>
-        <div className="flex gap-2">
-          <ExportCsvButton rows={rows} />
-          <ExportExcelButton rows={rows} />
-        </div>
+    <div className="mt-6 animate-[fadeIn_0.3s_ease-out]">
+      {/* Botões de exportação (só aparecem quando há dados carregados) */}
+      <div className="absolute top-6 right-6 flex gap-2 z-10">
+        <ExportCsvButton rows={rows} />
+        <ExportExcelButton rows={rows} />
       </div>
-
-      <DateRangeFilter
-        action="/relatorios"
-        dateStart={dateStart}
-        dateEnd={dateEnd}
-        extra={
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">
-              Cantina
-            </label>
-            <select
-              name="cantina"
-              defaultValue={cantinaFiltro}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            >
-              <option value="todas">Todas</option>
-              {cantinasDisponiveis.map((nome) => (
-                <option key={nome} value={nome}>
-                  {nome}
-                </option>
-              ))}
-            </select>
-          </div>
-        }
-      />
 
       <div className="mb-4 rounded-xl bg-white px-5 py-3 shadow-sm">
         <span className="text-sm text-slate-500">
-          {rows.length} refeicoes no periodo &middot;{" "}
+          {rows.length} refeições no período &middot;{" "}
         </span>
         <span className="font-semibold text-slate-800">
           {total.toLocaleString("pt-MZ", { minimumFractionDigits: 2 })} MT
@@ -128,7 +105,7 @@ export default async function RelatoriosPage({
               <th className="px-5 py-3">No Interno</th>
               <th className="px-5 py-3">Nome do colaborador</th>
               <th className="px-5 py-3">Empresa</th>
-              <th className="px-5 py-3">Tipo de refeicao</th>
+              <th className="px-5 py-3">Tipo de refeição</th>
               <th className="px-5 py-3">Cantina</th>
               <th className="px-5 py-3">Valor</th>
               <th className="px-5 py-3">Data / hora</th>
@@ -136,13 +113,13 @@ export default async function RelatoriosPage({
           </thead>
           <tbody>
             {rows.map((r, i) => (
-              <tr key={i} className="border-t border-slate-100">
-                <td className="px-5 py-3">{r.codigo}</td>
-                <td className="px-5 py-3">{r.colaborador}</td>
-                <td className="px-5 py-3">{r.empresa}</td>
-                <td className="px-5 py-3">{r.tipo}</td>
-                <td className="px-5 py-3">{r.cantina}</td>
-                <td className="px-5 py-3">
+              <tr key={i} className="border-t border-slate-100 hover:bg-slate-50/50 transition-colors">
+                <td className="px-5 py-3 font-medium text-slate-700">{r.codigo}</td>
+                <td className="px-5 py-3 text-slate-900">{r.colaborador}</td>
+                <td className="px-5 py-3 text-slate-600">{r.empresa}</td>
+                <td className="px-5 py-3 text-slate-600">{r.tipo}</td>
+                <td className="px-5 py-3 text-slate-600">{r.cantina}</td>
+                <td className="px-5 py-3 font-semibold text-slate-700">
                   {r.valor.toLocaleString("pt-MZ", { minimumFractionDigits: 2 })} MT
                 </td>
                 <td className="px-5 py-3 text-slate-500">{r.data}</td>
@@ -150,14 +127,91 @@ export default async function RelatoriosPage({
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-5 py-6 text-center text-slate-400">
-                  Nenhum registo encontrado no periodo.
+                <td colSpan={7} className="px-5 py-8 text-center text-slate-400">
+                  Nenhum registo encontrado para os filtros selecionados.
                 </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+// 2. COMPONENTE PRINCIPAL: Carrega instantaneamente sem tocar na base de dados
+export default async function RelatoriosPage({ searchParams }: PageProps) {
+  const session = await getSession();
+  if (!session) redirect("/login");
+
+  const resolvedParams = await searchParams;
+
+  // IMPORTANTE: Detetamos se o utilizador já clicou em pesquisar através da presença das datas na URL
+  const possuiFiltroAtivo = Boolean(resolvedParams.dateStart && resolvedParams.dateEnd);
+
+  // Valores padrão para os inputs (mas não disparamos a busca automática se possuiFiltroAtivo for falso)
+  const hoje = new Date();
+  const trintaDiasAtras = new Date();
+  trintaDiasAtras.setDate(hoje.getDate() - 30);
+  const toISO = (d: Date) => d.toISOString().slice(0, 10);
+
+  const dateStart = resolvedParams.dateStart || toISO(trintaDiasAtras);
+  const dateEnd = resolvedParams.dateEnd || toISO(hoje);
+  const cantinaFiltro = resolvedParams.cantina || "todas";
+
+  return (
+    <div className="relative min-h-[500px]">
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-slate-800">Relatórios</h1>
+      </div>
+
+      {/* Caixa de filtros estática e instantânea */}
+      <DateRangeFilter
+        action="/relatorios"
+        dateStart={dateStart}
+        dateEnd={dateEnd}
+        extra={
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">
+              Cantina
+            </label>
+            <select
+              name="cantina"
+              defaultValue={cantinaFiltro}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white"
+            >
+              <option value="todas">Todas</option>
+              {/* Opções estáticas para evitar uma query extra na abertura rápida */}
+              <option value="Cantina Principal">Cantina Principal</option>
+              <option value="Cantina Secção 4">Cantina Secção 4</option>
+              <option value="Cantina Alojamento">Cantina Alojamento</option>
+            </select>
+          </div>
+        }
+      />
+
+      {/* Condicional Inteligente: Se não filtrou, pede para filtrar. Se filtrou, busca e exibe */}
+      {!possuiFiltroAtivo ? (
+        <div className="mt-8 flex flex-col items-center justify-center p-12 text-center bg-white border border-dashed border-slate-200 rounded-2xl shadow-sm">
+          <div className="text-4xl mb-3">📅</div>
+          <h3 className="text-base font-semibold text-slate-800">Consulta de Relatórios Históricos</h3>
+          <p className="text-sm text-slate-400 max-w-sm mt-1">
+            Selecione o intervalo de datas e a cantina desejada acima e clique em <span className="font-semibold text-slate-600">Consultar</span> para processar as informações.
+          </p>
+        </div>
+      ) : (
+        <Suspense 
+          key={`${dateStart}-${dateEnd}-${cantinaFiltro}`} 
+          fallback={<TabelaLoading />}
+        >
+          <RelatoriosConteudo
+            clientId={session.clientId}
+            dateStart={dateStart}
+            dateEnd={dateEnd}
+            cantinaFiltro={cantinaFiltro}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
