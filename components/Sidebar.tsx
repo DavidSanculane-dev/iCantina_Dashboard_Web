@@ -5,9 +5,9 @@ import { usePathname } from "next/navigation";
 
 const links = [
   { href: "/dashboard", label: "Dashboard", icon: "🏠" },
-  { href: "/refeicoes", label: "Refeicoes ao vivo", icon: "⏱️" },
+  { href: "/refeicoes", label: "Refeições em tempo real", icon: "⏱️" },
   { href: "/colaboradores", label: "Colaboradores", icon: "🧑‍🤝‍🧑" },
-  { href: "/relatorios", label: "Relatorios", icon: "📊" },
+  { href: "/relatorios", label: "Relatórios", icon: "📊" },
 ];
 
 export default function Sidebar({

@@ -51,7 +51,7 @@ export default async function DashboardPage({
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          label="Total de refeicoes (periodo)"
+          label="Total de refeições (periodo)"
           value={summary.totalRefeicoes.toLocaleString("pt-MZ")}
           icon="📈"
           bg="bg-lime-50"
@@ -62,7 +62,7 @@ export default async function DashboardPage({
           icon="👥"
         />
         <StatCard
-          label="Custo medio de refeicao"
+          label="Custo médio de refeição"
           value={formatMT(summary.custoMedio)}
           icon="🔄"
         />
@@ -77,20 +77,23 @@ export default async function DashboardPage({
       <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="rounded-2xl bg-white p-5 shadow-sm lg:col-span-2">
           <h2 className="mb-3 font-semibold text-slate-700">
-            Tendencia de consumo de refeicoes
+            Tendência de consumo de refeições
           </h2>
           <TrendChart data={summary.tendencia} />
         </div>
         <div className="rounded-2xl bg-white p-5 shadow-sm">
           <h2 className="mb-3 font-semibold text-slate-700">
-            Distribuicao por tipo de refeicao
+            Distribuição por tipo de refeição
           </h2>
-          <DonutChart data={distribuicao} />
+          <div className = "h- [240px]">
+            <DonutChart data={distribuicao} />
+          </div>
+          
         </div>
       </div>
 
       <div className="rounded-2xl bg-white p-5 shadow-sm">
-        <h2 className="mb-3 font-semibold text-slate-700">Refeicoes por cantina</h2>
+        <h2 className="mb-3 font-semibold text-slate-700">Refeições por cantina</h2>
         <CantinaBarChart data={summary.porCantina} />
       </div>
     </div>
