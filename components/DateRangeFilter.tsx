@@ -1,3 +1,5 @@
+import DatePickerField from "./DatePickerField";
+
 export default function DateRangeFilter({
   action,
   dateStart,
@@ -15,28 +17,8 @@ export default function DateRangeFilter({
       method="get"
       className="mb-6 flex flex-wrap items-end gap-3 rounded-2xl bg-white p-4 shadow-sm"
     >
-      <div>
-        <label className="mb-1 block text-xs font-medium text-slate-500">
-          Data inicio
-        </label>
-        <input
-          type="date"
-          name="dateStart"
-          defaultValue={dateStart}
-          className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-        />
-      </div>
-      <div>
-        <label className="mb-1 block text-xs font-medium text-slate-500">
-          Data fim
-        </label>
-        <input
-          type="date"
-          name="dateEnd"
-          defaultValue={dateEnd}
-          className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-        />
-      </div>
+      <DatePickerField name="dateStart" label="Data inicio" defaultValue={dateStart} />
+      <DatePickerField name="dateEnd" label="Data fim" defaultValue={dateEnd} />
       {extra}
       <button
         type="submit"

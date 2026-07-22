@@ -1,11 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
-import {
-  getMealLogsToday,
-  getEmployees,
-  getMealTypesMap,
-  getCantinas,
-} from "@/lib/queries";
+import { getMealLogsToday, getEmployees, getMealTypesMap } from "@/lib/queries";
 import RefeicoesLiveTable from "@/components/RefeicoesLiveTable";
 
 export default async function RefeicoesPage({
@@ -19,32 +14,38 @@ export default async function RefeicoesPage({
   const cantinaFiltro = searchParams.cantina || "todas";
   const q = (searchParams.q || "").trim().toLowerCase();
 
+  // Busca TODAS as refeicoes de hoje de uma vez so (sem filtro no banco).
+  // O filtro de cantina e a busca por nome sao aplicados aqui em memoria,
+  // garantindo que "Todas" e a soma das cantinas sempre batem entre si.
   const [todosLogsHoje, employees, mealTypes] = await Promise.all([
-    getMealLogsToday(session.clientId, cantinaFiltro),
+    getMealLogsToday(session.clientId),
     getEmployees(session.clientId),
     getMealTypesMap(session.clientId),
   ]);
 
- 
   const employeeNames: Record<string, string> = {};
   for (const e of employees) employeeNames[e.client_entity_id] = e.nome;
 
   const mealTypeNames: Record<string, string> = {};
   for (const [id, mt] of mealTypes.entries()) mealTypeNames[id] = mt.nome;
 
-  const logsValidos = todosLogsHoje.filter((l) => employeeNames[l.employee_id] !== undefined);
-  
+  // So considera refeicoes de colaboradores ativos (nao removidos)
+  const logsValidos = todosLogsHoje.filter(
+    (l) => employeeNames[l.employee_id] !== undefined
+  );
+
+  // Lista de cantinas derivada dos proprios dados de hoje (evita
+  // duplicatas/nomes divergentes vindos da tabela "cantinas")
   const cantinasDisponiveis = Array.from(
     new Set(logsValidos.map((l) => l.cantina).filter(Boolean))
   ).sort((a, b) => a.localeCompare(b));
 
-  // So mantem refeicoes de colaboradores ativos (nao removidos),
-  // e aplica a busca por nome, se houver.
   const logsFiltrados = logsValidos.filter((l) => {
     if (cantinaFiltro !== "todas" && l.cantina !== cantinaFiltro) return false;
-    const nome = employeeNames[l.employee_id];
-    if (nome === undefined) return false;
-    if (q && !nome.toLowerCase().includes(q)) return false;
+    if (q) {
+      const nome = employeeNames[l.employee_id]?.toLowerCase() ?? "";
+      if (!nome.includes(q)) return false;
+    }
     return true;
   });
 

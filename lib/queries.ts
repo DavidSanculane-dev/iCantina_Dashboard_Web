@@ -40,6 +40,30 @@ export type Cantina = {
   nome: string;
 };
 
+// O Supabase/PostgREST limita cada consulta a 1000 linhas por padrao,
+// independente do .limit() pedido no client. Esta funcao pagina
+// automaticamente em blocos de 1000 ate trazer o conjunto completo.
+async function fetchAllRows<T>(
+  buildQuery: (from: number, to: number) => PromiseLike<{ data: any; error: unknown }>
+): Promise<T[]> {
+  const PAGE_SIZE = 1000;
+  let from = 0;
+  const all: T[] = [];
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const to = from + PAGE_SIZE - 1;
+    const { data, error } = await buildQuery(from, to);
+    if (error) throw error;
+    const rows = (data ?? []) as T[];
+    all.push(...rows);
+    if (rows.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+
+  return all;
+}
+
 // ---------- Dashboard ----------
 
 export async function getDashboardSummary(
@@ -47,17 +71,24 @@ export async function getDashboardSummary(
   dateStart: string,
   dateEnd: string
 ) {
-  const { data, error } = await supabaseAdmin
-    .from("meal_log")
-    .select("valor_refeicao, employee_id, meal_type_id, cantina, consumed_at")
-    .eq("client_id", clientId)
-    .eq("is_deleted", false)
-    .gte("consumed_at", dateStart)
-    .lte("consumed_at", dateEnd);
+  type Row = {
+    valor_refeicao: number;
+    employee_id: string;
+    meal_type_id: string;
+    cantina: string;
+    consumed_at: string;
+  };
 
-  if (error) throw error;
-
-  const rows = data ?? [];
+  const rows = await fetchAllRows<Row>((from, to) =>
+    supabaseAdmin
+      .from("meal_log")
+      .select("valor_refeicao, employee_id, meal_type_id, cantina, consumed_at")
+      .eq("client_id", clientId)
+      .eq("is_deleted", false)
+      .gte("consumed_at", dateStart)
+      .lte("consumed_at", dateEnd)
+      .range(from, to)
+  );
   const totalRefeicoes = rows.length;
   const colaboradoresUnicos = new Set(rows.map((r) => r.employee_id)).size;
   const totalValor = rows.reduce((acc, r) => acc + Number(r.valor_refeicao ?? 0), 0);
@@ -144,6 +175,38 @@ export async function getMealLogsCreatedAfter(clientId: string, afterIso: string
   return (data ?? []) as MealLog[];
 }
 
+// Retorna as refeicoes do dia de hoje (fuso de Maputo, UTC+2), com filtro
+// opcional de cantina. Usado na tela "Refeicoes ao vivo".
+export async function getMealLogsToday(clientId: string, cantina?: string) {
+  const nowUtc = new Date();
+  const maputo = new Date(nowUtc.getTime() + 2 * 60 * 60 * 1000);
+  const dateStr = maputo.toISOString().slice(0, 10);
+  const dateStart = `${dateStr}T00:00:00`;
+  const dateEnd = `${dateStr}T23:59:59.999`;
+
+  const rows = await fetchAllRows<MealLog>((from, to) => {
+    let query = supabaseAdmin
+      .from("meal_log")
+      .select(
+        "id, employee_id, meal_type_id, cantina, valor_refeicao, consumed_at, created_at"
+      )
+      .eq("client_id", clientId)
+      .eq("is_deleted", false)
+      .gte("consumed_at", dateStart)
+      .lte("consumed_at", dateEnd)
+      .order("consumed_at", { ascending: false })
+      .range(from, to);
+
+    if (cantina && cantina !== "todas") {
+      query = query.eq("cantina", cantina);
+    }
+
+    return query;
+  });
+
+  return rows;
+}
+
 // ---------- Colaboradores ----------
 
 export async function getEmployees(clientId: string, search?: string) {
@@ -211,32 +274,6 @@ export async function getCantinas(clientId: string) {
   return (data ?? []) as Cantina[];
 }
 
-export async function getMealLogsForReport(
-  clientId: string,
-  dateStart: string,
-  dateEnd: string,
-  cantina?: string
-) {
-  let query = supabaseAdmin
-    .from("meal_log")
-    .select(
-      "id, employee_id, meal_type_id, cantina, valor_refeicao, consumed_at"
-    )
-    .eq("client_id", clientId)
-    .eq("is_deleted", false)
-    .gte("consumed_at", dateStart)
-    .lte("consumed_at", dateEnd)
-    .order("consumed_at", { ascending: false });
-
-  if (cantina && cantina !== "todas") {
-    query = query.eq("cantina", cantina);
-  }
-
-  const { data, error } = await query.limit(5000);
-  if (error) throw error;
-  return (data ?? []) as MealLog[];
-}
-
 export async function getDepartamentos(clientId: string) {
   const { data, error } = await supabaseAdmin
     .from("departamentos")
@@ -257,42 +294,29 @@ export async function getEmpresas(clientId: string) {
   return (data ?? []) as { id: number; client_entity_id: string; nome: string }[];
 }
 
-export async function getAllEmployeeNames(clientId: string) {
-  const { data, error } = await supabaseAdmin
-    .from("employees")
-    .select("client_entity_id, nome")
-    .eq("client_id", clientId);
-  if (error) throw error;
-  const map: Record<string, string> = {};
-  for (const e of data ?? []) map[e.client_entity_id] = e.nome;
-  return map;
-}
+export async function getMealLogsForReport(
+  clientId: string,
+  dateStart: string,
+  dateEnd: string,
+  cantina?: string
+) {
+  const rows = await fetchAllRows<MealLog>((from, to) => {
+    let query = supabaseAdmin
+      .from("meal_log")
+      .select("id, employee_id, meal_type_id, cantina, valor_refeicao, consumed_at")
+      .eq("client_id", clientId)
+      .eq("is_deleted", false)
+      .gte("consumed_at", dateStart)
+      .lte("consumed_at", dateEnd)
+      .order("consumed_at", { ascending: false })
+      .range(from, to);
 
-// Retorna as refeicoes do dia de hoje (fuso de Maputo, UTC+2), com filtro
-// opcional de cantina. Usado na tela "Refeicoes ao vivo".
-export async function getMealLogsToday(clientId: string, cantina?: string) {
-  const nowUtc = new Date();
-  const maputo = new Date(nowUtc.getTime() + 2 * 60 * 60 * 1000);
-  const dateStr = maputo.toISOString().slice(0, 10);
-  const dateStart = `${dateStr}T00:00:00`;
-  const dateEnd = `${dateStr}T23:59:59.999`;
+    if (cantina && cantina !== "todas") {
+      query = query.eq("cantina", cantina);
+    }
 
-  let query = supabaseAdmin
-    .from("meal_log")
-    .select(
-      "id, employee_id, meal_type_id, cantina, valor_refeicao, consumed_at, created_at"
-    )
-    .eq("client_id", clientId)
-    .eq("is_deleted", false)
-    .gte("consumed_at", dateStart)
-    .lte("consumed_at", dateEnd)
-    .order("consumed_at", { ascending: false });
+    return query;
+  });
 
-  if (cantina && cantina !== "todas") {
-    query = query.eq("cantina", cantina);
-  }
-
-  const { data, error } = await query.limit(3000);
-  if (error) throw error;
-  return (data ?? []) as MealLog[];
+  return rows;
 }

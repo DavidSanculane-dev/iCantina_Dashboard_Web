@@ -4,10 +4,11 @@ import {
   getMealLogsForReport,
   getEmployees,
   getMealTypesMap,
-  getCantinas,
+  getEmpresas,
 } from "@/lib/queries";
 import DateRangeFilter from "@/components/DateRangeFilter";
 import ExportCsvButton, { type ReportRow } from "@/components/ExportCsvButton";
+import ExportExcelButton from "@/components/ExportExcelButton";
 
 function defaultRange() {
   const end = new Date();
@@ -30,18 +31,44 @@ export default async function RelatoriosPage({
   const dateEnd = searchParams.dateEnd || defaults.dateEnd;
   const cantinaFiltro = searchParams.cantina || "todas";
 
-  const [logs, employees, mealTypes, cantinas] = await Promise.all([
-    getMealLogsForReport(session.clientId, dateStart, `${dateEnd}T23:59:59`, cantinaFiltro),
+  // Busca TODOS os registros do periodo de uma vez so (sem filtro de
+  // cantina no banco). O filtro e a lista de cantinas disponiveis sao
+  // resolvidos aqui em memoria, evitando duplicatas/inconsistencias.
+  const [todosLogs, employees, mealTypes, empresas] = await Promise.all([
+    getMealLogsForReport(session.clientId, dateStart, `${dateEnd}T23:59:59`),
     getEmployees(session.clientId),
     getMealTypesMap(session.clientId),
-    getCantinas(session.clientId),
+    getEmpresas(session.clientId),
   ]);
 
   const employeeNames: Record<string, string> = {};
-  for (const e of employees) employeeNames[e.client_entity_id] = e.nome;
+  const employeeCodigos: Record<string, string> = {};
+  const employeeEmpresaId: Record<string, string> = {};
+  for (const e of employees) {
+    employeeNames[e.client_entity_id] = e.nome;
+    employeeCodigos[e.client_entity_id] = e.codigo ?? "-";
+    employeeEmpresaId[e.client_entity_id] = e.empresa_client_id ?? "";
+  }
 
-  const rows: ReportRow[] = logs.map((l) => ({
-    colaborador: employeeNames[l.employee_id] ?? l.employee_id,
+  const empresaNomes: Record<string, string> = {};
+  for (const emp of empresas) empresaNomes[emp.client_entity_id] = emp.nome;
+
+  // Ignora refeicoes de colaboradores apagados (is_deleted = true)
+  const logsValidos = todosLogs.filter((l) => employeeNames[l.employee_id] !== undefined);
+
+  // Lista de cantinas derivada dos proprios dados (evita duplicatas)
+  const cantinasDisponiveis = Array.from(
+    new Set(logsValidos.map((l) => l.cantina).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b));
+
+  const logsFiltrados = logsValidos.filter(
+    (l) => cantinaFiltro === "todas" || l.cantina === cantinaFiltro
+  );
+
+  const rows: ReportRow[] = logsFiltrados.map((l) => ({
+    codigo: employeeCodigos[l.employee_id] ?? "-",
+    colaborador: employeeNames[l.employee_id],
+    empresa: empresaNomes[employeeEmpresaId[l.employee_id]] ?? "-",
     tipo: mealTypes.get(String(l.meal_type_id))?.nome ?? String(l.meal_type_id),
     cantina: l.cantina,
     valor: Number(l.valor_refeicao ?? 0),
@@ -54,7 +81,10 @@ export default async function RelatoriosPage({
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-slate-800">Relatorios</h1>
-        <ExportCsvButton rows={rows} />
+        <div className="flex gap-2">
+          <ExportCsvButton rows={rows} />
+          <ExportExcelButton rows={rows} />
+        </div>
       </div>
 
       <DateRangeFilter
@@ -72,9 +102,9 @@ export default async function RelatoriosPage({
               className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
             >
               <option value="todas">Todas</option>
-              {cantinas.map((c) => (
-                <option key={c.id} value={c.nome}>
-                  {c.nome}
+              {cantinasDisponiveis.map((nome) => (
+                <option key={nome} value={nome}>
+                  {nome}
                 </option>
               ))}
             </select>
@@ -95,7 +125,9 @@ export default async function RelatoriosPage({
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-400">
             <tr>
-              <th className="px-5 py-3">Colaborador</th>
+              <th className="px-5 py-3">No Interno</th>
+              <th className="px-5 py-3">Nome do colaborador</th>
+              <th className="px-5 py-3">Empresa</th>
               <th className="px-5 py-3">Tipo de refeicao</th>
               <th className="px-5 py-3">Cantina</th>
               <th className="px-5 py-3">Valor</th>
@@ -105,7 +137,9 @@ export default async function RelatoriosPage({
           <tbody>
             {rows.map((r, i) => (
               <tr key={i} className="border-t border-slate-100">
+                <td className="px-5 py-3">{r.codigo}</td>
                 <td className="px-5 py-3">{r.colaborador}</td>
+                <td className="px-5 py-3">{r.empresa}</td>
                 <td className="px-5 py-3">{r.tipo}</td>
                 <td className="px-5 py-3">{r.cantina}</td>
                 <td className="px-5 py-3">
@@ -116,7 +150,7 @@ export default async function RelatoriosPage({
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-5 py-6 text-center text-slate-400">
+                <td colSpan={7} className="px-5 py-6 text-center text-slate-400">
                   Nenhum registo encontrado no periodo.
                 </td>
               </tr>
