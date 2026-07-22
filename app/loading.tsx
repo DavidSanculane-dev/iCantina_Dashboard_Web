@@ -13,8 +13,8 @@ export default function RootGlobalLoading() {
               alt="A carregar iCantina..."
               width={112}
               height={112}
-              className="rounded-3xl shadow-xl border border-slate-100"
-              priority
+              className="rounded-3xl shadow-xl"
+              
             />
           </div>
         </div>
