@@ -1,7 +1,9 @@
 "use client";
 
 export type ReportRow = {
+  codigo: string;
   colaborador: string;
+  empresa: string;
   tipo: string;
   cantina: string;
   valor: number;
@@ -10,9 +12,17 @@ export type ReportRow = {
 
 export default function ExportCsvButton({ rows }: { rows: ReportRow[] }) {
   const handleExport = () => {
-    const header = ["Colaborador", "Tipo de refeicao", "Cantina", "Valor (MT)", "Data/Hora"];
+    const header = [
+      "No Interno",
+      "Nome do colaborador",
+      "Empresa",
+      "Tipo de refeicao",
+      "Cantina",
+      "Valor (MT)",
+      "Data/Hora",
+    ];
     const lines = rows.map((r) =>
-      [r.colaborador, r.tipo, r.cantina, r.valor.toFixed(2), r.data]
+      [r.codigo, r.colaborador, r.empresa, r.tipo, r.cantina, r.valor.toFixed(2), r.data]
         .map((v) => `"${String(v).replace(/"/g, '""')}"`)
         .join(";")
     );
