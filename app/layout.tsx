@@ -1,5 +1,6 @@
 import { Metadata } from "next";
-import "@/app/globals.css"; 
+// @ts-ignore: global CSS import may not have type declarations
+import "./globals.css";
 
 export const metadata: Metadata = {
   title: "iCantina Web",
