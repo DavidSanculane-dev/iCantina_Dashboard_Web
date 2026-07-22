@@ -2,6 +2,7 @@
 
 import { useFormState, useFormStatus } from "react-dom";
 import { loginAction, type LoginState } from "./actions";
+import Footer from "@/components/Footer";
 
 const initialState: LoginState = {};
 
@@ -22,7 +23,7 @@ export default function LoginPage() {
   const [state, formAction] = useFormState(loginAction, initialState);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-brand-bg px-4">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-brand-bg px-4">
       <div className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-lg">
         <div className="mb-8 flex flex-col items-center gap-2">
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-green text-2xl text-white">
@@ -67,6 +68,8 @@ export default function LoginPage() {
           <SubmitButton />
         </form>
       </div>
+
+      <Footer />
     </div>
   );
 }
