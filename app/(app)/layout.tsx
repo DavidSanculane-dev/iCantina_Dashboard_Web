@@ -3,6 +3,7 @@ import { getSession } from "@/lib/session";
 import Sidebar from "@/components/Sidebar";
 import Footer from "@/components/Footer";
 
+
 export default async function AppLayout({
   children,
 }: {

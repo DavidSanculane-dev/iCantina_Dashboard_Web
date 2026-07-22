@@ -1,7 +1,7 @@
 export default function Footer() {
   return (
     <footer className="mt-8 border-t border-slate-100 py-4 text-center text-xs text-slate-400">
-      iCantina desenvolvido com{" "}
+      iCantina - Desenvolvido com{" "}
       <span className="text-red-500" aria-label="amor">
         ❤️
       </span>{" "}

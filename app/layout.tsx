@@ -1,9 +1,12 @@
-import type { Metadata } from "next";
-import "./globals.css";
+import { Metadata } from "next";
+import "@/app/globals.css"; 
 
 export const metadata: Metadata = {
   title: "iCantina Web",
-  description: "Relatorios e historico de refeicoes",
+  description: "Painel de Gestão iCantina",
+  icons: {
+    icon: "/ico-icantina.ico", // Caminho correto partindo da pasta /public
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

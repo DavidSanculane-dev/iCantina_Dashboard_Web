@@ -2,25 +2,55 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { getMealLogsToday, getEmployees, getMealTypesMap } from "@/lib/queries";
 import RefeicoesLiveTable from "@/components/RefeicoesLiveTable";
+import { Suspense } from "react";
 
-export default async function RefeicoesPage({
-  searchParams,
+// Indicador de carregamento discreto apenas para os dados e contadores, mantendo os inputs intactos
+function LiveDataLoading() {
+  return (
+    <div className="space-y-6">
+      {/* Esqueleto dos 3 blocos de contadores */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="rounded-2xl bg-white p-5 shadow-sm animate-pulse border border-slate-50">
+            <div className="h-4 w-32 bg-slate-200 rounded" />
+            <div className="mt-2 h-7 w-20 bg-slate-200 rounded" />
+          </div>
+        ))}
+      </div>
+      {/* Esqueleto da Tabela em Tempo Real */}
+      <div className="w-full py-12 flex flex-col items-center justify-center gap-3 bg-white rounded-2xl shadow-sm border border-slate-100">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-emerald-500" />
+        <p className="text-xs font-medium text-slate-500 animate-pulse">
+          A sincronizar fluxo de refeições de hoje...
+        </p>
+      </div>
+    </div>
+  );
+}
+
+interface SearchParams {
+  cantina?: string;
+  q?: string;
+}
+
+interface PageProps {
+  searchParams: Promise<SearchParams>;
+}
+
+// 1. COMPONENTE ASSÍNCRONO: Processa a base de dados pesada de hoje em segundo plano
+async function RefeicoesConteudo({
+  clientId,
+  cantinaFiltro,
+  q,
 }: {
-  searchParams: { cantina?: string; q?: string };
+  clientId: string;
+  cantinaFiltro: string;
+  q: string;
 }) {
-  const session = await getSession();
-  if (!session) redirect("/login");
-
-  const cantinaFiltro = searchParams.cantina || "todas";
-  const q = (searchParams.q || "").trim().toLowerCase();
-
-  // Busca TODAS as refeicoes de hoje de uma vez so (sem filtro no banco).
-  // O filtro de cantina e a busca por nome sao aplicados aqui em memoria,
-  // garantindo que "Todas" e a soma das cantinas sempre batem entre si.
   const [todosLogsHoje, employees, mealTypes] = await Promise.all([
-    getMealLogsToday(session.clientId),
-    getEmployees(session.clientId),
-    getMealTypesMap(session.clientId),
+    getMealLogsToday(clientId),
+    getEmployees(clientId),
+    getMealTypesMap(clientId),
   ]);
 
   const employeeNames: Record<string, string> = {};
@@ -29,16 +59,9 @@ export default async function RefeicoesPage({
   const mealTypeNames: Record<string, string> = {};
   for (const [id, mt] of mealTypes.entries()) mealTypeNames[id] = mt.nome;
 
-  // So considera refeicoes de colaboradores ativos (nao removidos)
   const logsValidos = todosLogsHoje.filter(
     (l) => employeeNames[l.employee_id] !== undefined
   );
-
-  // Lista de cantinas derivada dos proprios dados de hoje (evita
-  // duplicatas/nomes divergentes vindos da tabela "cantinas")
-  const cantinasDisponiveis = Array.from(
-    new Set(logsValidos.map((l) => l.cantina).filter(Boolean))
-  ).sort((a, b) => a.localeCompare(b));
 
   const logsFiltrados = logsValidos.filter((l) => {
     if (cantinaFiltro !== "todas" && l.cantina !== cantinaFiltro) return false;
@@ -57,13 +80,61 @@ export default async function RefeicoesPage({
   const colaboradoresUnicos = new Set(logsFiltrados.map((l) => l.employee_id)).size;
 
   return (
-    <div>
-      <h1 className="mb-6 text-2xl font-bold text-slate-800">Refeições processadas em tempo real</h1>
+    <div className="animate-[fadeIn_0.2s_ease-out]">
+      {/* Grid de Contadores Atualizados */}
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="rounded-2xl bg-white p-5 shadow-sm border border-slate-50">
+          <p className="text-sm font-medium text-slate-500">Total de refeições</p>
+          <p className="mt-1 text-2xl font-bold text-slate-800">
+            {totalRefeicoes.toLocaleString("pt-MZ")}
+          </p>
+        </div>
+        <div className="rounded-2xl bg-white p-5 shadow-sm border border-slate-50">
+          <p className="text-sm font-medium text-slate-500">Colaboradores atendidos</p>
+          <p className="mt-1 text-2xl font-bold text-slate-800">
+            {colaboradoresUnicos.toLocaleString("pt-MZ")}
+          </p>
+        </div>
+        <div className="rounded-2xl bg-white p-5 shadow-sm border border-slate-50">
+          <p className="text-sm font-medium text-slate-500">Total em valor</p>
+          <p className="mt-1 text-2xl font-bold text-slate-800">
+            {totalValor.toLocaleString("pt-MZ", { minimumFractionDigits: 2 })} MT
+          </p>
+        </div>
+      </div>
 
+      {/* Componente que escuta o WebSocket / SSE para atualizações em live */}
+      <RefeicoesLiveTable
+        initialLogs={logsFiltrados}
+        employeeNames={employeeNames}
+        mealTypeNames={mealTypeNames}
+        cantinaFiltro={cantinaFiltro}
+        searchFiltro={q}
+      />
+    </div>
+  );
+}
+
+// 2. COMPONENTE PRINCIPAL: Carrega a página instantaneamente a 0ms
+export default async function RefeicoesPage({ searchParams }: PageProps) {
+  const session = await getSession();
+  if (!session) redirect("/login");
+
+  const resolvedParams = await searchParams;
+  const cantinaFiltro = resolvedParams.cantina || "todas";
+  const q = (resolvedParams.q || "").trim().toLowerCase();
+
+  return (
+    <div>
+      <h1 className="mb-6 text-2xl font-bold text-slate-800">
+        Refeições processadas em tempo real
+      </h1>
+
+      {/* O Formulário de pesquisa fica fixo no topo e nunca desaparece ao filtrar */}
       <form
         action="/refeicoes"
         method="get"
-        className="mb-6 flex flex-wrap items-end gap-3 rounded-2xl bg-white p-4 shadow-sm"
+        className="mb-6 flex flex-wrap items-end gap-3 rounded-2xl bg-white p-4 shadow-sm border border-slate-100"
       >
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-500">
@@ -72,14 +143,13 @@ export default async function RefeicoesPage({
           <select
             name="cantina"
             defaultValue={cantinaFiltro}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white"
           >
             <option value="todas">Todas</option>
-            {cantinasDisponiveis.map((nome) => (
-              <option key={nome} value={nome}>
-                {nome}
-              </option>
-            ))}
+            {/* Opções pré-definidas para evitar bloqueio assíncrono no formulário */}
+            <option value="Cantina Principal">Cantina Principal</option>
+            <option value="Cantina Secção 4">Cantina Secção 4</option>
+            <option value="Cantina Alojamento">Cantina Alojamento</option>
           </select>
         </div>
         <div>
@@ -89,47 +159,30 @@ export default async function RefeicoesPage({
           <input
             type="text"
             name="q"
-            defaultValue={searchParams.q ?? ""}
+            defaultValue={resolvedParams.q ?? ""}
             placeholder="Pesquisar por nome..."
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
           />
         </div>
         <button
           type="submit"
-          className="rounded-lg bg-brand-green px-4 py-2 text-sm font-semibold text-white hover:bg-brand-greenDark"
+          className="rounded-lg bg-brand-green px-4 py-2 text-sm font-semibold text-white hover:bg-brand-greenDark transition-colors"
         >
           🔍 Filtrar
         </button>
       </form>
 
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <p className="text-sm font-medium text-slate-500">Total de refeições</p>
-          <p className="mt-1 text-2xl font-bold text-slate-800">
-            {totalRefeicoes.toLocaleString("pt-MZ")}
-          </p>
-        </div>
-        <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <p className="text-sm font-medium text-slate-500">Colaboradores atendidos</p>
-          <p className="mt-1 text-2xl font-bold text-slate-800">
-            {colaboradoresUnicos.toLocaleString("pt-MZ")}
-          </p>
-        </div>
-        <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <p className="text-sm font-medium text-slate-500">Total em valor</p>
-          <p className="mt-1 text-2xl font-bold text-slate-800">
-            {totalValor.toLocaleString("pt-MZ", { minimumFractionDigits: 2 })} MT
-          </p>
-        </div>
-      </div>
-
-      <RefeicoesLiveTable
-        initialLogs={logsFiltrados}
-        employeeNames={employeeNames}
-        mealTypeNames={mealTypeNames}
-        cantinaFiltro={cantinaFiltro}
-        searchFiltro={q}
-      />
+      {/* A Key obriga o React a isolar o loading apenas nesta secção inferior */}
+      <Suspense 
+        key={`${cantinaFiltro}-${q}`} 
+        fallback={<LiveDataLoading />}
+      >
+        <RefeicoesConteudo
+          clientId={session.clientId}
+          cantinaFiltro={cantinaFiltro}
+          q={q}
+        />
+      </Suspense>
     </div>
   );
 }
