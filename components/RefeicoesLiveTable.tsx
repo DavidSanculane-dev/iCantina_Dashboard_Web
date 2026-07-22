@@ -57,7 +57,7 @@ export default function RefeicoesLiveTable({
   return (
     <div className="rounded-2xl bg-white p-5 shadow-sm">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="font-semibold text-slate-700">Refeicoes registadas agora</h2>
+        <h2 className="font-semibold text-slate-700">Refeições registadas agora</h2>
         <span
           className={`flex items-center gap-2 text-xs font-medium ${
             connected ? "text-green-600" : "text-slate-400"
@@ -68,7 +68,7 @@ export default function RefeicoesLiveTable({
               connected ? "bg-green-500" : "bg-slate-300"
             }`}
           />
-          {connected ? "Ao vivo" : "Conectando..."}
+          {connected ? "Em tempo real" : "Conectando..."}
         </span>
       </div>
 
@@ -77,7 +77,7 @@ export default function RefeicoesLiveTable({
           <thead className="sticky top-0 bg-white text-xs uppercase text-slate-400">
             <tr>
               <th className="py-2">Colaborador</th>
-              <th className="py-2">Tipo de refeicao</th>
+              <th className="py-2">Tipo de refeição</th>
               <th className="py-2">Cantina</th>
               <th className="py-2">Valor</th>
               <th className="py-2">Hora</th>

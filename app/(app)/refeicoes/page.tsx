@@ -58,7 +58,7 @@ export default async function RefeicoesPage({
 
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-bold text-slate-800">Refeicoes ao vivo</h1>
+      <h1 className="mb-6 text-2xl font-bold text-slate-800">Refeições processadas em tempo real</h1>
 
       <form
         action="/refeicoes"
@@ -104,7 +104,7 @@ export default async function RefeicoesPage({
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <p className="text-sm font-medium text-slate-500">Total de refeicoes</p>
+          <p className="text-sm font-medium text-slate-500">Total de refeições</p>
           <p className="mt-1 text-2xl font-bold text-slate-800">
             {totalRefeicoes.toLocaleString("pt-MZ")}
           </p>
