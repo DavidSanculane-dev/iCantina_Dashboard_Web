@@ -209,24 +209,58 @@ export async function getMealLogsToday(clientId: string, cantina?: string) {
 
 // ---------- Colaboradores ----------
 
-export async function getEmployees(clientId: string, search?: string) {
-  let query = supabaseAdmin
-    .from("employees")
-    .select(
-      "id, client_entity_id, codigo, nome, departamento_client_id, empresa_client_id, cantina_client_id, ativo"
-    )
-    .eq("client_id", clientId)
-    .eq("is_deleted", false)
-    .order("nome", { ascending: true });
+export async function getEmployees(clientId: string, q?: string) {
+  const employees = [];
+  let paginaEmployees = 0;
+  let temMaisEmployees = true;
+  const tamanhoPaginaEmployees = 1000;
 
-  if (search && search.trim().length > 0) {
-    query = query.ilike("nome", `%${search.trim()}%`);
+  // Ciclo exaustivo para contornar o limite de 1000 linhas do Supabase
+  while (temMaisEmployees) {
+    let query = supabaseAdmin
+      .from("employees")
+      .select("client_entity_id, codigo, nome, departamento_client_id, empresa_client_id, id, ativo")
+      .eq("client_id", clientId)
+      .eq("is_deleted", false);
+
+    // Se o utilizador digitou algo na barra de pesquisa, filtra direto no banco
+    //if (q && q.trim() !== "") {
+      //query = query.ilike("nome", `%${q}%`);
+    //}
+    if (q && q.trim() !== "") {
+        const filtro = q.trim();
+        query = query.or(`nome.ilike.%${filtro}%,codigo.ilike.%${filtro}%`);
+    }
+
+    const { data: lote, error } = await query
+      .order("nome", { ascending: true })
+      .range(
+        paginaEmployees * tamanhoPaginaEmployees, 
+        (paginaEmployees + 1) * tamanhoPaginaEmployees - 1
+      );
+
+    if (error) {
+      console.error("Erro ao carregar lote de colaboradores:", error.message);
+      throw error;
+    }
+
+    if (!lote || lote.length === 0) {
+      temMaisEmployees = false;
+    } else {
+      employees.push(...lote);
+      
+      // Se o lote veio menor que 1000, significa que chegámos ao fim dos registos
+      if (lote.length < tamanhoPaginaEmployees) {
+        temMaisEmployees = false;
+      } else {
+        paginaEmployees++;
+      }
+    }
   }
 
-  const { data, error } = await query;
-  if (error) throw error;
-  return (data ?? []) as Employee[];
+  return employees;
 }
+
 
 export async function getEmployeeById(clientId: string, clientEntityId: string) {
   const { data, error } = await supabaseAdmin
@@ -294,29 +328,67 @@ export async function getEmpresas(clientId: string) {
   return (data ?? []) as { id: number; client_entity_id: string; nome: string }[];
 }
 
+// Consulta leve (so a coluna "cantina") para popular o dropdown de filtro
+// sem precisar carregar todas as refeicoes. Deduplica em memoria para
+// evitar nomes repetidos vindos da sincronizacao.
+export async function getDistinctCantinasFromMealLog(clientId: string) {
+  const rows = await fetchAllRows<{ cantina: string }>((from, to) =>
+    supabaseAdmin
+      .from("meal_log")
+      .select("cantina")
+      .eq("client_id", clientId)
+      .eq("is_deleted", false)
+      .range(from, to)
+  );
+  return Array.from(new Set(rows.map((r) => r.cantina).filter(Boolean))).sort((a, b) =>
+    a.localeCompare(b)
+  );
+}
+
+// DENTRO DE lib/queries.ts
 export async function getMealLogsForReport(
   clientId: string,
   dateStart: string,
   dateEnd: string,
   cantina?: string
 ) {
-  const rows = await fetchAllRows<MealLog>((from, to) => {
-    let query = supabaseAdmin
+  const inicioDia = new Date(dateStart);
+  inicioDia.setHours(0, 0, 0, 0);
+
+  const fimDia = new Date(dateEnd);
+  fimDia.setHours(23, 59, 59, 999);
+
+  const meals = [];
+  let paginaMeals = 0;
+  let temMaisMeals = true;
+  const tamanhoPaginaMeals = 1000;
+
+  while (temMaisMeals) {
+    let query = supabaseAdmin // Como este ficheiro já tem o cliente declarado, o erro desaparece!
       .from("meal_log")
-      .select("id, employee_id, meal_type_id, cantina, valor_refeicao, consumed_at")
-      .eq("client_id", clientId)
+      .select("id, employee_id, meal_type_id, cantina, consumed_at")
       .eq("is_deleted", false)
-      .gte("consumed_at", dateStart)
-      .lte("consumed_at", dateEnd)
-      .order("consumed_at", { ascending: false })
-      .range(from, to);
+      .eq("client_id", clientId)
+      .gte("consumed_at", inicioDia.toISOString())
+      .lte("consumed_at", fimDia.toISOString());
 
     if (cantina && cantina !== "todas") {
       query = query.eq("cantina", cantina);
     }
 
-    return query;
-  });
+    const { data: lote, error } = await query
+      .order("consumed_at", { ascending: false })
+      .range(paginaMeals * tamanhoPaginaMeals, (paginaMeals + 1) * tamanhoPaginaMeals - 1);
 
-  return rows;
+    if (error) throw error;
+
+    if (!lote || lote.length === 0) {
+      temMaisMeals = false;
+    } else {
+      meals.push(...lote);
+      if (lote.length < tamanhoPaginaMeals) temMaisMeals = false;
+      else paginaMeals++;
+    }
+  }
+  return meals;
 }

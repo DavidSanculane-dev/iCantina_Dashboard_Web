@@ -11,8 +11,8 @@ export default function ExportExcelButton({ rows }: { rows: ReportRow[] }) {
       Empresa: r.empresa,
       "Tipo de refeicao": r.tipo,
       Cantina: r.cantina,
-      "Valor (MT)": r.valor,
-      "Data/Hora": r.data,
+      Data: r.data,
+      Hora: r.hora,
     }));
 
     const planilha = XLSX.utils.json_to_sheet(dadosPlanilha);
@@ -24,8 +24,8 @@ export default function ExportExcelButton({ rows }: { rows: ReportRow[] }) {
       { wch: 22 }, // Empresa
       { wch: 22 }, // Tipo de refeicao
       { wch: 18 }, // Cantina
-      { wch: 12 }, // Valor
-      { wch: 20 }, // Data/Hora
+      { wch: 12 }, // Data
+      { wch: 10 }, // Hora
     ];
 
     const livro = XLSX.utils.book_new();
