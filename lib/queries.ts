@@ -303,7 +303,7 @@ export async function getCantinas(clientId: string) {
     .eq("client_id", clientId)
     .eq("is_deleted", false);
   if (error) throw error;
-  return (data ?? []) as { id: number; client_entity_id: string; nome: string }[];;
+  return (data ?? []) as { id: number; client_entity_id: string; nome: string }[];
 }
 
 export async function getDepartamentos(clientId: string) {
@@ -440,7 +440,7 @@ export async function getMealLogsForReport(
 
     // 1. Aplicação segura do filtro de Cantina (Tratando caixa alta/baixa do formulário)
     if (cantina && cantina.toLowerCase() !== "todas") {
-      query = query.eq("cantina", cantina.trim);
+      query = query.eq("cantina", cantina.trim());
     }
 
     // 2. Aplicação do filtro de Empresa restrito via lista de IDs do Passo 1

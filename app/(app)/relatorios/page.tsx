@@ -42,7 +42,7 @@ async function CantinaSelect({
     >
       <option value="todas">Todas</option>
       {cantinas.map((c) => (
-        <option key={c.client_entity_id} value={c.client_entity_id}>
+        <option key={c.client_entity_id} value={c.nome.trim()}>
           {c.nome.trim()}
         </option>
       ))}
