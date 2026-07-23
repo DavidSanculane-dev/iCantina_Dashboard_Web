@@ -6,6 +6,7 @@ import {
   getMealTypesMap,
   getEmpresas,
   getDistinctCantinasFromMealLog,
+  getCantinas,
 } from "@/lib/queries";
 import DateRangeFilter from "@/components/DateRangeFilter";
 import ExportCsvButton, { type ReportRow } from "@/components/ExportCsvButton";
@@ -24,6 +25,7 @@ function TabelaLoading() {
   );
 }
 
+
 async function CantinaSelect({
   clientId,
   cantinaFiltro,
@@ -31,7 +33,7 @@ async function CantinaSelect({
   clientId: string;
   cantinaFiltro: string;
 }) {
-  const cantinasDisponiveis = await getDistinctCantinasFromMealLog(clientId);
+  const cantinas = await getCantinas(clientId);
   return (
     <select
       name="cantina"
@@ -39,16 +41,40 @@ async function CantinaSelect({
       className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none"
     >
       <option value="todas">Todas</option>
-      {cantinasDisponiveis.map((nome) => (
-        <option key={nome} value={nome}>
-          {nome}
+      {cantinas.map((c) => (
+        <option key={c.client_entity_id} value={c.client_entity_id}>
+          {c.nome.trim()}
         </option>
       ))}
     </select>
   );
 }
 
-function CantinaSelectLoading() {
+async function EmpresaSelect({
+  clientId,
+  empresaFiltro,
+}: {
+  clientId: string;
+  empresaFiltro: string;
+}) {
+  const empresas = await getEmpresas(clientId);
+  return (
+    <select
+      name="empresa"
+      defaultValue={empresaFiltro}
+      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none"
+    >
+      <option value="todas">Todas</option>
+      {empresas.map((emp) => (
+        <option key={emp.client_entity_id} value={emp.client_entity_id}>
+          {emp.nome.trim()}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function SelectLoading() {
   return (
     <select disabled className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-400">
       <option>Carregando...</option>
@@ -60,6 +86,7 @@ interface SearchParams {
   dateStart?: string;
   dateEnd?: string;
   cantina?: string;
+  empresa?: string;
   page?: string;
 }
 
@@ -67,17 +94,20 @@ interface PageProps {
   searchParams: Promise<SearchParams>;
 }
 
+
 async function RelatoriosConteudo({
   clientId,
   dateStart,
   dateEnd,
   cantinaFiltro,
+  empresaFiltro,
   paginaAtiva,
 }: {
   clientId: string;
   dateStart: string;
   dateEnd: string;
   cantinaFiltro: string;
+  empresaFiltro: string;
   paginaAtiva: number;
 }) {
   const [todosLogs, employees, mealTypes, empresas] = await Promise.all([
@@ -103,14 +133,28 @@ async function RelatoriosConteudo({
 
   const logsValidos = todosLogs.filter((l) => employeeNames[l.employee_id] !== undefined);
 
-  const rows: ReportRow[] = logsValidos.map((l) => {
+   // 2. FILTRO DUPLO CRUZADO: Aplica o filtro de Empresa E o filtro de Cantina simultaneamente
+  const logsFiltradosCombinados = logsValidos.filter((l) => {
+    // Validação da Empresa
+    const passaEmpresa = empresaFiltro === "todas" || employeeEmpresaId[l.employee_id] === empresaFiltro;
+    
+    // Validação da Cantina (Normalizada com .toLowerCase() e .trim() para evitar falhas por espaços ocultos)
+    const passaCantina = cantinaFiltro === "todas" || 
+      (l.cantina && l.cantina.trim().toLowerCase() === cantinaFiltro.trim().toLowerCase());
+
+    // O registo só entra na tabela se passar em ambos os critérios
+    return passaEmpresa && passaCantina;
+  });
+
+  // 3. Mapeia os dados finais a partir do array perfeitamente filtrado
+  const rows: ReportRow[] = logsFiltradosCombinados.map((l) => {
     const dataHora = new Date(l.consumed_at);
     return {
       codigo: employeeCodigos[l.employee_id] ?? "-",
       colaborador: employeeNames[l.employee_id],
       empresa: empresaNomes[employeeEmpresaId[l.employee_id]] ?? "-",
       tipo: mealTypes.get(String(l.meal_type_id))?.nome ?? String(l.meal_type_id),
-      cantina: l.cantina,
+      cantina: l.cantina || "Principal",
       data: dataHora.toLocaleDateString("pt-MZ"),
       hora: dataHora.toLocaleTimeString("pt-MZ"),
     };
@@ -129,8 +173,9 @@ async function RelatoriosConteudo({
   const mostrandoA = Math.min(indiceFinal, totalRegistos);
 
   const buildPageUrl = (novaPagina: number) => {
-    return `/relatorios?dateStart=${dateStart}&dateEnd=${dateEnd}&cantina=${cantinaFiltro}&page=${novaPagina}`;
+    return `/relatorios?dateStart=${dateStart}&dateEnd=${dateEnd}&cantina=${cantinaFiltro}&empresa=${empresaFiltro}&page=${novaPagina}`;
   };
+
   return (
     <div className="relative mt-6 animate-[fadeIn_0.2s_ease-out]">
       <div className="absolute right-0 -top-1 z-10 flex gap-2">
@@ -228,6 +273,7 @@ export default async function RelatoriosPage({ searchParams }: PageProps) {
   const dateStart = resolvedParams.dateStart || toISO(trintaDiasAtras);
   const dateEnd = resolvedParams.dateEnd || toISO(hoje);
   const cantinaFiltro = resolvedParams.cantina || "todas";
+  const empresaFiltro = resolvedParams.empresa || "todas";
   const paginaAtiva = Number(resolvedParams.page) || 1;
 
   return (
@@ -241,13 +287,23 @@ export default async function RelatoriosPage({ searchParams }: PageProps) {
         dateStart={dateStart}
         dateEnd={dateEnd}
         extra={
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">
-              Cantina
-            </label>
-            <Suspense fallback={<CantinaSelectLoading />}>
-              <CantinaSelect clientId={session.clientId} cantinaFiltro={cantinaFiltro} />
-            </Suspense>
+          <div className="flex gap-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">
+                Cantina
+              </label>
+              <Suspense fallback={<SelectLoading />}>
+                <CantinaSelect clientId={session.clientId} cantinaFiltro={cantinaFiltro} />
+              </Suspense>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">
+                Empresa
+              </label>
+              <Suspense fallback={<SelectLoading />}>
+                <EmpresaSelect clientId={session.clientId} empresaFiltro={empresaFiltro} />
+              </Suspense>
+            </div>
           </div>
         }
       />
@@ -259,13 +315,13 @@ export default async function RelatoriosPage({ searchParams }: PageProps) {
             Consulta de Relatórios Históricos
           </h3>
           <p className="mt-1 max-w-sm text-sm text-slate-400">
-            Selecione o intervalo de datas e a cantina desejada acima e clique em{" "}
+            Selecione o intervalo de datas, cantina e empresa desejada acima e clique em{" "}
             <span className="font-semibold text-slate-600">Consultar</span> para processar as informações de consumo.
           </p>
         </div>
       ) : (
         <Suspense 
-          key={`${dateStart}-${dateEnd}-${cantinaFiltro}-${paginaAtiva}`} 
+          key={`${dateStart}-${dateEnd}-${cantinaFiltro}-${empresaFiltro}-${paginaAtiva}`} 
           fallback={<TabelaLoading />}
         >
           <RelatoriosConteudo
@@ -273,6 +329,7 @@ export default async function RelatoriosPage({ searchParams }: PageProps) {
             dateStart={dateStart}
             dateEnd={dateEnd}
             cantinaFiltro={cantinaFiltro}
+            empresaFiltro={empresaFiltro}
             paginaAtiva={paginaAtiva}
           />
         </Suspense>
