@@ -224,9 +224,7 @@ export async function getEmployees(clientId: string, q?: string) {
       .eq("is_deleted", false);
 
     // Se o utilizador digitou algo na barra de pesquisa, filtra direto no banco
-    //if (q && q.trim() !== "") {
-      //query = query.ilike("nome", `%${q}%`);
-    //}
+    
     if (q && q.trim() !== "") {
         const filtro = q.trim();
         query = query.or(`nome.ilike.%${filtro}%,codigo.ilike.%${filtro}%`);
@@ -305,7 +303,7 @@ export async function getCantinas(clientId: string) {
     .eq("client_id", clientId)
     .eq("is_deleted", false);
   if (error) throw error;
-  return (data ?? []) as Cantina[];
+  return (data ?? []) as { id: number; client_entity_id: string; nome: string }[];;
 }
 
 export async function getDepartamentos(clientId: string) {
@@ -346,7 +344,7 @@ export async function getDistinctCantinasFromMealLog(clientId: string) {
 }
 
 // DENTRO DE lib/queries.ts
-export async function getMealLogsForReport(
+export async function getMealLogsForReport1(
   clientId: string,
   dateStart: string,
   dateEnd: string,
@@ -392,3 +390,82 @@ export async function getMealLogsForReport(
   }
   return meals;
 }
+
+export async function getMealLogsForReport(
+  clientId: string,
+  dateStart: string,
+  dateEnd: string,
+  cantina?: string,
+  empresaFiltro?: string // Novo parâmetro adicionado para o filtro cruzado
+) {
+  const inicioDia = new Date(dateStart);
+  inicioDia.setHours(0, 0, 0, 0);
+
+  const fimDia = new Date(dateEnd);
+  fimDia.setHours(23, 59, 59, 999);
+
+  // --- PASSO 1: Se houver filtro de empresa, descobrimos quais colaboradores pertencem a ela ---
+  let idsColaboradoresFiltrados: string[] | null = null;
+
+  if (empresaFiltro && empresaFiltro !== "todas") {
+    const { data: employeesDaEmpresa, error: errEmp } = await supabaseAdmin
+      .from("employees")
+      .select("client_entity_id")
+      .eq("client_id", clientId)
+      .eq("empresa_client_id", empresaFiltro)
+      .eq("is_deleted", false);
+
+    if (errEmp) throw errEmp;
+    
+    // Mapeia os IDs válidos. Se a empresa não tiver ninguém, criamos um array com uma string vazia para a query retornar zero registros de forma segura
+    idsColaboradoresFiltrados = employeesDaEmpresa && employeesDaEmpresa.length > 0
+      ? employeesDaEmpresa.map((e) => e.client_entity_id)
+      : ["nenhum_id_encontrado_vazio"];
+  }
+
+  const meals = [];
+  let paginaMeals = 0;
+  let temMaisMeals = true;
+  const tamanhoPaginaMeals = 1000;
+
+  // --- PASSO 2: Loop exaustivo de varrimento com aplicação de filtros combinados ---
+  while (temMaisMeals) {
+    let query = supabaseAdmin
+      .from("meal_log")
+      .select("id, employee_id, meal_type_id, cantina, consumed_at")
+      .eq("is_deleted", false)
+      .eq("client_id", clientId)
+      .gte("consumed_at", inicioDia.toISOString())
+      .lte("consumed_at", fimDia.toISOString());
+
+    // 1. Aplicação segura do filtro de Cantina (Tratando caixa alta/baixa do formulário)
+    if (cantina && cantina.toLowerCase() !== "todas") {
+      query = query.eq("cantina", cantina.trim);
+    }
+
+    // 2. Aplicação do filtro de Empresa restrito via lista de IDs do Passo 1
+    if (idsColaboradoresFiltrados !== null) {
+      query = query.in("employee_id", idsColaboradoresFiltrados);
+    }
+
+    const { data: lote, error } = await query
+      .order("consumed_at", { ascending: false })
+      .range(paginaMeals * tamanhoPaginaMeals, (paginaMeals + 1) * tamanhoPaginaMeals - 1);
+
+    if (error) throw error;
+
+    if (!lote || lote.length === 0) {
+      temMaisMeals = false;
+    } else {
+      meals.push(...lote);
+      if (lote.length < tamanhoPaginaMeals) {
+        temMaisMeals = false;
+      } else {
+        paginaMeals++;
+      }
+    }
+  }
+
+  return meals;
+}
+
