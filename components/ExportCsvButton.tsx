@@ -6,8 +6,9 @@ export type ReportRow = {
   empresa: string;
   tipo: string;
   cantina: string;
-  valor: number;
+  //valor: number;
   data: string;
+  hora: string;
 };
 
 export default function ExportCsvButton({ rows }: { rows: ReportRow[] }) {
@@ -19,10 +20,11 @@ export default function ExportCsvButton({ rows }: { rows: ReportRow[] }) {
       "Tipo de refeicao",
       "Cantina",
       "Valor (MT)",
-      "Data/Hora",
+      "Data",
+      "Hora",
     ];
     const lines = rows.map((r) =>
-      [r.codigo, r.colaborador, r.empresa, r.tipo, r.cantina, r.valor.toFixed(2), r.data]
+      [r.codigo, r.colaborador, r.empresa, r.tipo, r.cantina, r.data, r.hora]
         .map((v) => `"${String(v).replace(/"/g, '""')}"`)
         .join(";")
     );
