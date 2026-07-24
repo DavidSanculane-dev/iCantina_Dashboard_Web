@@ -10,7 +10,7 @@ import {
   getMealLogsForExport,
 } from "@/lib/queries";
 import DateRangeFilter from "@/components/DateRangeFilter";
-import ExportCsvButton, { type ReportRow } from "@/components/ExportCsvButton";
+import ExportCsvButton from "@/components/ExportCsvButton";
 import ExportExcelButton from "@/components/ExportExcelButton";
 import { Suspense } from "react";
 import Link from "next/link";
@@ -113,7 +113,7 @@ async function RelatoriosConteudo({
 }) {
   const ITENS_POR_PAGINA = 50;
 
-  const [resultadoRelatorio, logsExportacao, employees, mealTypes, empresas] =
+  const [resultadoRelatorio, employees, mealTypes, empresas] =
     await Promise.all([
       getMealLogsForReport(
         clientId,
@@ -125,15 +125,6 @@ async function RelatoriosConteudo({
         ITENS_POR_PAGINA
       ),
 
-      
-      getMealLogsForExport(
-          clientId,
-          dateStart,
-          dateEnd,
-          cantinaFiltro,
-          empresaFiltro
-        ),
-  
       getEmployees(clientId),
       getMealTypesMap(clientId),
       getEmpresas(clientId),
@@ -158,77 +149,20 @@ async function RelatoriosConteudo({
   for (const emp of empresas) {
     empresaNomes[emp.client_entity_id] = emp.nome;
   }
-
-  const rows: ReportRow[] = todosLogs
-    .filter(
-      (l) =>
-        employeeNames[l.employee_id] !== undefined
-    )
-    .map((l) => {
-      const dataHora = new Date(l.consumed_at);
-
-      return {
-        codigo:
-          employeeCodigos[l.employee_id] ?? "-",
-
-        colaborador:
-          employeeNames[l.employee_id] ?? "-",
-
-        empresa:
-          empresaNomes[
-            employeeEmpresaId[l.employee_id]
-          ] ?? "-",
-
-        tipo:
-          mealTypes.get(
-            String(l.meal_type_id)
-          )?.nome ??
-          String(l.meal_type_id),
-
-        cantina: l.cantina || "Principal",
-
-        data:
-          dataHora.toLocaleDateString("pt-MZ"),
-
-        hora:
-          dataHora.toLocaleTimeString("pt-MZ"),
-      };
-    });
   
-  //Exportação Excel de todos os dados
-  const rowsExportacao: ReportRow[] = logsExportacao
-    .filter(
-      (l) =>
-        employeeNames[l.employee_id] !== undefined
-    )
+   // Renderiza apenas os 50 itens da página corrente de forma ultra leve
+  const rows = todosLogs
+    .filter((l) => employeeNames[l.employee_id] !== undefined)
     .map((l) => {
       const dataHora = new Date(l.consumed_at);
-
       return {
-        codigo:
-          employeeCodigos[l.employee_id] ?? "-",
-
-        colaborador:
-          employeeNames[l.employee_id] ?? "-",
-
-        empresa:
-          empresaNomes[
-            employeeEmpresaId[l.employee_id]
-          ] ?? "-",
-
-        tipo:
-          mealTypes.get(
-            String(l.meal_type_id)
-          )?.nome ??
-          String(l.meal_type_id),
-
+        codigo: employeeCodigos[l.employee_id] ?? "-",
+        colaborador: employeeNames[l.employee_id] ?? "-",
+        empresa: empresaNomes[employeeEmpresaId[l.employee_id]] ?? "-",
+        tipo: mealTypes.get(String(l.meal_type_id))?.nome ?? String(l.meal_type_id),
         cantina: l.cantina || "Principal",
-
-        data:
-          dataHora.toLocaleDateString("pt-MZ"),
-
-        hora:
-          dataHora.toLocaleTimeString("pt-MZ"),
+        data: dataHora.toLocaleDateString("pt-MZ"),
+        hora: dataHora.toLocaleTimeString("pt-MZ"),
       };
     });
 
@@ -260,8 +194,20 @@ async function RelatoriosConteudo({
   return (
     <div className="relative mt-6 animate-[fadeIn_0.2s_ease-out]">
       <div className="absolute right-0 -top-1 z-10 flex gap-2">
-        <ExportCsvButton rows={rowsExportacao} />
-        <ExportExcelButton rows={rowsExportacao} />
+          <ExportCsvButton 
+          clientId={clientId} 
+          dateStart={dateStart} 
+          dateEnd={dateEnd} 
+          cantina={cantinaFiltro} 
+          empresa={empresaFiltro} 
+        />
+        <ExportExcelButton 
+          clientId={clientId} 
+          dateStart={dateStart} 
+          dateEnd={dateEnd} 
+          cantina={cantinaFiltro} 
+          empresa={empresaFiltro} 
+        />
       </div>
 
       <div className="mb-4 rounded-xl bg-white px-5 py-3 shadow-sm border border-slate-50 inline-block">
@@ -376,11 +322,11 @@ export default async function RelatoriosPage({ searchParams }: PageProps) {
   const possuiFiltroAtivo = Boolean(resolvedParams.dateStart && resolvedParams.dateEnd);
 
   const hoje = new Date();
-  const trintaDiasAtras = new Date();
-  trintaDiasAtras.setDate(hoje.getDate() - 30);
+  const umDiasAtras = new Date();
+  umDiasAtras.setDate(hoje.getDate() - 1);
   const toISO = (d: Date) => d.toISOString().slice(0, 10);
 
-  const dateStart = resolvedParams.dateStart || toISO(trintaDiasAtras);
+  const dateStart = resolvedParams.dateStart || toISO(umDiasAtras);
   const dateEnd = resolvedParams.dateEnd || toISO(hoje);
   const cantinaFiltro = resolvedParams.cantina || "todas";
   const empresaFiltro = resolvedParams.empresa || "todas";

@@ -1,48 +1,46 @@
 "use client";
 
-export type ReportRow = {
-  codigo: string;
-  colaborador: string;
-  empresa: string;
-  tipo: string;
-  cantina: string;
-  //valor: number;
-  data: string;
-  hora: string;
-};
+import { useState } from "react";
 
-export default function ExportCsvButton({ rows }: { rows: ReportRow[] }) {
-  const handleExport = () => {
-    const header = [
-      "No Interno",
-      "Nome do colaborador",
-      "Empresa",
-      "Tipo de refeicao",
-      "Cantina",
-      "Data",
-      "Hora",
-    ];
-    const lines = rows.map((r) =>
-      [r.codigo, r.colaborador, r.empresa, r.tipo, r.cantina, r.data, r.hora]
-        .map((v) => `"${String(v).replace(/"/g, '""')}"`)
-        .join(";")
-    );
-    const csv = [header.join(";"), ...lines].join("\n");
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `relatorio-icantina-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+interface ExportButtonProps {
+  clientId: string;
+  dateStart: string;
+  dateEnd: string;
+  cantina: string;
+  empresa: string;
+}
+
+export default function ExportCsvButton({ clientId, dateStart, dateEnd, cantina, empresa }: ExportButtonProps) {
+  const [exportando, setExportando] = useState(false);
+
+  const lidarComExportacao = () => {
+    setExportando(true);
+
+    // Monta a URL apontando para a nossa nova rota de API de Stream
+    const params = new URLSearchParams({ clientId, dateStart, dateEnd, cantina, empresa });
+    
+    // Dispara o download nativo do browser de forma assíncrona
+    window.location.href = `/api/exportar-csv?${params.toString()}`;
+
+    // Como o download roda em background do browser, resetamos o estado após alguns segundos
+    setTimeout(() => setExportando(false), 4000);
   };
 
   return (
     <button
-      onClick={handleExport}
-      className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-brand-greenDark shadow-sm hover:bg-slate-50"
+      onClick={lidarComExportacao}
+      disabled={exportando}
+      className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition-all hover:bg-emerald-700 disabled:bg-slate-300"
     >
-      ⬇️ Exportar CSV
+      {exportando ? (
+        <>
+          <div className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+          A descarregar...
+        </>
+      ) : (
+        "Exportar CSV"
+      )}
     </button>
   );
 }
+
