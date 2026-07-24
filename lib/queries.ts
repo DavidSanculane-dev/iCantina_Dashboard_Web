@@ -66,7 +66,7 @@ async function fetchAllRows<T>(
 
 // ---------- Dashboard ----------
 
-export async function getDashboardSummary(
+export async function getDashboardSummary1(
   clientId: string,
   dateStart: string,
   dateEnd: string
@@ -133,6 +133,128 @@ export async function getDashboardSummary(
   };
 }
 
+export async function getDashboardSummary(
+  clientId: string,
+  dateStart: string,
+  dateEnd: string
+) {
+  type Row = {
+    employee_id: string;
+    meal_type_id: string;
+    cantina: string;
+    valor_refeicao: number;
+    consumed_at: string;
+  };
+
+  const rows: Row[] = [];
+  const PAGE_SIZE = 1000;
+
+  let page = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const { data, error } = await supabaseAdmin
+      .from("meal_log")
+      .select(
+        "employee_id, meal_type_id, cantina, valor_refeicao, consumed_at"
+      )
+      .eq("client_id", clientId)
+      .eq("is_deleted", false)
+      .gte("consumed_at", dateStart)
+      .lte("consumed_at", dateEnd)
+      .range(
+        page * PAGE_SIZE,
+        ((page + 1) * PAGE_SIZE) - 1
+      );
+
+    if (error) throw error;
+
+    const lote = data ?? [];
+
+    rows.push(...lote);
+
+    if (lote.length < PAGE_SIZE) {
+      hasMore = false;
+    } else {
+      page++;
+    }
+  }
+
+  const totalRefeicoes = rows.length;
+
+  const colaboradoresUnicos = new Set(
+    rows.map((r) => r.employee_id)
+  ).size;
+
+  const totalValor = rows.reduce(
+    (acc, r) => acc + Number(r.valor_refeicao ?? 0),
+    0
+  );
+
+  const custoMedio =
+    totalRefeicoes > 0
+      ? totalValor / totalRefeicoes
+      : 0;
+
+  const porDiaMap = new Map<string, number>();
+
+  for (const r of rows) {
+    const dia = r.consumed_at.slice(0, 10);
+
+    porDiaMap.set(
+      dia,
+      (porDiaMap.get(dia) ?? 0) + 1
+    );
+  }
+
+  const tendencia = Array.from(
+    porDiaMap.entries()
+  )
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([data, total]) => ({
+      data,
+      total,
+    }));
+
+  const porTipoMap = new Map<string, number>();
+
+  for (const r of rows) {
+    const tipo = String(r.meal_type_id);
+
+    porTipoMap.set(
+      tipo,
+      (porTipoMap.get(tipo) ?? 0) + 1
+    );
+  }
+
+  const porCantinaMap = new Map<string, number>();
+
+  for (const r of rows) {
+    const cantina = r.cantina || "N/D";
+
+    porCantinaMap.set(
+      cantina,
+      (porCantinaMap.get(cantina) ?? 0) + 1
+    );
+  }
+
+  const porCantina = Array.from(
+    porCantinaMap.entries()
+  ).map(([cantina, total]) => ({
+    cantina,
+    total,
+  }));
+
+  return {
+    totalRefeicoes,
+    colaboradoresUnicos,
+    custoMedio,
+    totalValor,
+    tendencia,
+    distribuicaoPorTipo: porTipoMap,
+    porCantina,
+  };
+}
 export async function getMealTypesMap(clientId: string) {
   const { data, error } = await supabaseAdmin
     .from("meal_types")
@@ -343,53 +465,6 @@ export async function getDistinctCantinasFromMealLog(clientId: string) {
   );
 }
 
-// DENTRO DE lib/queries.ts
-export async function getMealLogsForReport1(
-  clientId: string,
-  dateStart: string,
-  dateEnd: string,
-  cantina?: string
-) {
-  const inicioDia = new Date(dateStart);
-  inicioDia.setHours(0, 0, 0, 0);
-
-  const fimDia = new Date(dateEnd);
-  fimDia.setHours(23, 59, 59, 999);
-
-  const meals = [];
-  let paginaMeals = 0;
-  let temMaisMeals = true;
-  const tamanhoPaginaMeals = 1000;
-
-  while (temMaisMeals) {
-    let query = supabaseAdmin // Como este ficheiro já tem o cliente declarado, o erro desaparece!
-      .from("meal_log")
-      .select("id, employee_id, meal_type_id, cantina, consumed_at")
-      .eq("is_deleted", false)
-      .eq("client_id", clientId)
-      .gte("consumed_at", inicioDia.toISOString())
-      .lte("consumed_at", fimDia.toISOString());
-
-    if (cantina && cantina !== "todas") {
-      query = query.eq("cantina", cantina);
-    }
-
-    const { data: lote, error } = await query
-      .order("consumed_at", { ascending: false })
-      .range(paginaMeals * tamanhoPaginaMeals, (paginaMeals + 1) * tamanhoPaginaMeals - 1);
-
-    if (error) throw error;
-
-    if (!lote || lote.length === 0) {
-      temMaisMeals = false;
-    } else {
-      meals.push(...lote);
-      if (lote.length < tamanhoPaginaMeals) temMaisMeals = false;
-      else paginaMeals++;
-    }
-  }
-  return meals;
-}
 
 export async function getMealLogsForReport(
   clientId: string,

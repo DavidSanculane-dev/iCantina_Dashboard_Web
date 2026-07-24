@@ -15,7 +15,7 @@ function formatMT(value: number) {
 function defaultRange() {
   const end = new Date();
   const start = new Date();
-  start.setDate(end.getDate() - 20);
+  start.setDate(end.getDate() - 7);
   const toISO = (d: Date) => d.toISOString().slice(0, 10);
   return { dateStart: toISO(start), dateEnd: toISO(end) };
 }

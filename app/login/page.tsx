@@ -35,6 +35,7 @@ export default function LoginPage() {
               height={56} // Equivalente ao tamanho w-14 (14 * 4 = 56px)
               className="object-cover"
               priority    // Garante que o ícone do cabeçalho/sidebar carrega instantaneamente
+              unoptimized
             />
           </div>
           <h1 className="text-2xl font-bold text-brand-greenDark">iCantina</h1>
