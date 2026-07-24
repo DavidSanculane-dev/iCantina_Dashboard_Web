@@ -27,17 +27,11 @@ export default function LoginPage() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-brand-bg px-4">
       <div className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-lg">
         <div className="mb-8 flex flex-col items-center gap-2">
-           <div className="flex h-14 w-14 items-center justify-center overflow-hidden shadow-sm">
-            <Image
-              src="/logo-icantina.png"
-              alt="iCantina Logo"
-              width={56}  // Equivalente ao tamanho h-14 (14 * 4 = 56px)
-              height={56} // Equivalente ao tamanho w-14 (14 * 4 = 56px)
-              className="object-cover"
-              priority    // Garante que o ícone do cabeçalho/sidebar carrega instantaneamente
-              unoptimized
-            />
+           {/* 🟢 CORREÇÃO: Fundo verde sólido da marca com tamanho de texto grande (text-2xl) */}
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-green shadow-sm select-none text-2xl">
+            🍽️
           </div>
+          
           <h1 className="text-2xl font-bold text-brand-greenDark">iCantina</h1>
           <p className="text-sm text-slate-500">Relatórios e Histórico de Refeições</p>
         </div>
