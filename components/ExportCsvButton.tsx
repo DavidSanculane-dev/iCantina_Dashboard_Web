@@ -19,7 +19,6 @@ export default function ExportCsvButton({ rows }: { rows: ReportRow[] }) {
       "Empresa",
       "Tipo de refeicao",
       "Cantina",
-      "Valor (MT)",
       "Data",
       "Hora",
     ];
