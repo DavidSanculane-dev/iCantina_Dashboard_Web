@@ -66,73 +66,6 @@ async function fetchAllRows<T>(
 
 // ---------- Dashboard ----------
 
-export async function getDashboardSummary1(
-  clientId: string,
-  dateStart: string,
-  dateEnd: string
-) {
-  type Row = {
-    valor_refeicao: number;
-    employee_id: string;
-    meal_type_id: string;
-    cantina: string;
-    consumed_at: string;
-  };
-
-  const rows = await fetchAllRows<Row>((from, to) =>
-    supabaseAdmin
-      .from("meal_log")
-      .select("valor_refeicao, employee_id, meal_type_id, cantina, consumed_at")
-      .eq("client_id", clientId)
-      .eq("is_deleted", false)
-      .gte("consumed_at", dateStart)
-      .lte("consumed_at", dateEnd)
-      .range(from, to)
-  );
-  const totalRefeicoes = rows.length;
-  const colaboradoresUnicos = new Set(rows.map((r) => r.employee_id)).size;
-  const totalValor = rows.reduce((acc, r) => acc + Number(r.valor_refeicao ?? 0), 0);
-  const custoMedio = totalRefeicoes > 0 ? totalValor / totalRefeicoes : 0;
-
-  // Series por dia (para o grafico de tendencia)
-  const porDiaMap = new Map<string, number>();
-  for (const r of rows) {
-    const dia = String(r.consumed_at).slice(0, 10);
-    porDiaMap.set(dia, (porDiaMap.get(dia) ?? 0) + 1);
-  }
-  const tendencia = Array.from(porDiaMap.entries())
-    .sort(([a], [b]) => (a > b ? 1 : -1))
-    .map(([data, total]) => ({ data, total }));
-
-  // Distribuicao por tipo de refeicao
-  const porTipoMap = new Map<string, number>();
-  for (const r of rows) {
-    const tipo = String(r.meal_type_id);
-    porTipoMap.set(tipo, (porTipoMap.get(tipo) ?? 0) + 1);
-  }
-
-  // Por cantina
-  const porCantinaMap = new Map<string, number>();
-  for (const r of rows) {
-    const c = r.cantina ?? "N/D";
-    porCantinaMap.set(c, (porCantinaMap.get(c) ?? 0) + 1);
-  }
-  const porCantina = Array.from(porCantinaMap.entries()).map(([cantina, total]) => ({
-    cantina,
-    total,
-  }));
-
-  return {
-    totalRefeicoes,
-    colaboradoresUnicos,
-    custoMedio,
-    totalValor,
-    tendencia,
-    distribuicaoPorTipo: porTipoMap,
-    porCantina,
-  };
-}
-
 export async function getDashboardSummary(
   clientId: string,
   dateStart: string,
@@ -468,14 +401,14 @@ export async function getDistinctCantinasFromMealLog(clientId: string) {
 
 
 export async function getMealLogsForReport(
-  clientId: string,
-  dateStart: string,
-  dateEnd: string,
-  cantina?: string,
-  empresaFiltro?: string,
-  page: number = 1,
-  pageSize: number = 50
-) {
+    clientId: string,
+    dateStart: string,
+    dateEnd: string,
+    cantina?: string,
+    empresaFiltro?: string,
+    page: number = 1,
+    pageSize: number = 50
+  ) {
   const inicioDia = new Date(dateStart);
   inicioDia.setHours(0, 0, 0, 0);
 
@@ -514,14 +447,15 @@ export async function getMealLogsForReport(
     .gte("consumed_at", inicioDia.toISOString())
     .lte("consumed_at", fimDia.toISOString());
 
-  if (
-    cantina &&
-    cantina.toLowerCase() !== "todas"
-  ) {
-    query = query.eq(
-      "cantina",
-      cantina.trim()
-    );
+  // ✅ CORREÇÃO: Lógica para aceitar múltiplas cantinas simultâneas
+  if (cantina && cantina.toLowerCase() !== "todas") {
+    // Converte a string "Cantina A,Cantina B" num array real: ['Cantina A', 'Cantina B']
+    const arrayCantinas = cantina.split(",").map(c => c.trim());
+    
+    if (arrayCantinas.length > 0) {
+      // O operador .in obriga o PostgreSQL a trazer dados de qualquer uma das cantinas do array
+      query = query.in("cantina", arrayCantinas);
+    }
   }
 
   if (idsColaboradoresFiltrados) {
@@ -550,12 +484,12 @@ export async function getMealLogsForReport(
 }
 
 export async function getMealLogsForExport(
-  clientId: string,
-  dateStart: string,
-  dateEnd: string,
-  cantina?: string,
-  empresaFiltro?: string
-) {
+      clientId: string,
+      dateStart: string,
+      dateEnd: string,
+      cantina?: string,
+      empresaFiltro?: string
+    ) {
   let idsColaboradoresFiltrados: string[] | null = null;
 
   if (empresaFiltro && empresaFiltro !== "todas") {
@@ -586,14 +520,15 @@ export async function getMealLogsForExport(
       .gte("consumed_at", `${dateStart}T00:00:00`)
       .lte("consumed_at", `${dateEnd}T23:59:59`);
 
-    if (
-      cantina &&
-      cantina !== "todas"
-    ) {
-      query = query.eq(
-        "cantina",
-        cantina.trim()
-      );
+       // ✅ CORREÇÃO: Lógica adaptada para aceitar múltiplas cantinas em simultâneo
+    if (cantina && cantina.toLowerCase() !== "todas") {
+      // Converte a string "Cantina Principal,Cantina Secção 4" num array real: ['Cantina Principal', 'Cantina Secção 4']
+      const arrayCantinas = cantina.split(",").map(c => c.trim());
+      
+      if (arrayCantinas.length > 0) {
+        // O operador .in obriga o banco a trazer dados que correspondam a QUALQUER uma das cantinas do array
+        query = query.in("cantina", arrayCantinas);
+      }
     }
 
     if (idsColaboradoresFiltrados) {
@@ -660,9 +595,15 @@ export async function getMealLogsForExportPaged(
     .gte("consumed_at", `${dateStart}T00:00:00`)
     .lte("consumed_at", `${dateEnd}T23:59:59`);
 
-  // 3. Aplicar Filtro de Cantina (se selecionado)
+  // ✅ LOGICA MULTI-SELECT COMPATÍVEL COM OS BOTÕES
   if (cantinaFiltro && cantinaFiltro !== "todas") {
-    query = query.eq("cantina", cantinaFiltro.trim());
+    // Transforma "Cantina Principal,Cantina Secção 4" num array real: ['Cantina Principal', 'Cantina Secção 4']
+    const arrayCantinas = cantinaFiltro.split(",").map(c => c.trim());
+    
+    if (arrayCantinas.length > 0) {
+      // O operador .in obriga o banco a trazer dados que correspondam a QUALQUER uma das selecionadas
+      query = query.in("cantina", arrayCantinas);
+    }
   }
 
   // 4. CORREÇÃO: Aplicar de facto o filtro de empresa na query!

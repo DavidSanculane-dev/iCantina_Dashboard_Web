@@ -7,13 +7,13 @@ import {
   getEmpresas,
   getDistinctCantinasFromMealLog,
   getCantinas,
-  getMealLogsForExport,
 } from "@/lib/queries";
 import DateRangeFilter from "@/components/DateRangeFilter";
 import ExportCsvButton from "@/components/ExportCsvButton";
 import ExportExcelButton from "@/components/ExportExcelButton";
 import { Suspense } from "react";
 import Link from "next/link";
+import FiltroCantinasChips from "@/components/FiltroCantinasChips";
 
 function TabelaLoading() {
   return (
@@ -113,7 +113,7 @@ async function RelatoriosConteudo({
 }) {
   const ITENS_POR_PAGINA = 50;
 
-  const [resultadoRelatorio, employees, mealTypes, empresas] =
+  const [resultadoRelatorio = { rows: [], total: 0 }, employees, mealTypes, empresas] =
     await Promise.all([
       getMealLogsForReport(
         clientId,
@@ -339,27 +339,31 @@ export default async function RelatoriosPage({ searchParams }: PageProps) {
       </div>
 
       <DateRangeFilter
-        action="/relatorios"
-        dateStart={dateStart}
-        dateEnd={dateEnd}
-        extra={
-          <div className="flex gap-3">
+            action="/relatorios"
+            dateStart={dateStart}
+            dateEnd={dateEnd}
+            extra={
+          // Alinhámos os itens ao final (items-end) para que o filtro de Empresa 
+          // fique perfeitamente alinhado na horizontal com os novos botões das Cantinas
+          <div className="flex items-end gap-5">
+            
+            {/* ✅ SUBSTITUIÇÃO: O filtro clássico deu lugar aos botões modernos */}
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-500">
-                Cantina
-              </label>
-              <Suspense fallback={<SelectLoading />}>
-                <CantinaSelect clientId={session.clientId} cantinaFiltro={cantinaFiltro} />
+              <Suspense fallback={<div className="h-9 w-48 animate-pulse rounded-xl bg-slate-100" />}>
+                <FiltroCantinasChips />
               </Suspense>
             </div>
+
+            {/* O filtro de Empresa mantém-se exatamente igual à sua estrutura original */}
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-500">
+              <label className="mb-1 block text-xs font-medium text-slate-500 uppercase tracking-wider">
                 Empresa
               </label>
               <Suspense fallback={<SelectLoading />}>
                 <EmpresaSelect clientId={session.clientId} empresaFiltro={empresaFiltro} />
               </Suspense>
             </div>
+
           </div>
         }
       />
