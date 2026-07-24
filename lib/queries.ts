@@ -627,3 +627,65 @@ export async function getMealLogsForExport(
 
   return meals;
 }
+
+export async function getMealLogsForExportPaged(
+  clientId: string,
+  dateStart: string,
+  dateEnd: string,
+  cantinaFiltro: string,
+  empresaFiltro: string,
+  pagina: number,
+  tamanhoLote: number
+) {
+  // 1. Procurar funcionários da empresa primeiro (se houver filtro)
+  let idsColaboradoresFiltrados: string[] | null = null;
+  
+  if (empresaFiltro && empresaFiltro !== "todas") {
+    const { data } = await supabaseAdmin
+      .from("employees")
+      .select("client_entity_id")
+      .eq("client_id", clientId)
+      .eq("empresa_client_id", empresaFiltro)
+      .eq("is_deleted", false);
+
+    idsColaboradoresFiltrados = data?.map(e => e.client_entity_id) ?? [];
+  }
+
+  // 2. Montar a Query Base de meal_log (Adicionado o sufixo de horas para precisão)
+  let query = supabaseAdmin
+    .from("meal_log")
+    .select("employee_id, meal_type_id, cantina, consumed_at")
+    .eq("client_id", clientId)
+    .eq("is_deleted", false)
+    .gte("consumed_at", `${dateStart}T00:00:00`)
+    .lte("consumed_at", `${dateEnd}T23:59:59`);
+
+  // 3. Aplicar Filtro de Cantina (se selecionado)
+  if (cantinaFiltro && cantinaFiltro !== "todas") {
+    query = query.eq("cantina", cantinaFiltro.trim());
+  }
+
+  // 4. CORREÇÃO: Aplicar de facto o filtro de empresa na query!
+  if (idsColaboradoresFiltrados) {
+    query = query.in("employee_id", idsColaboradoresFiltrados);
+  }
+
+  // 5. Aplicar a paginação nativa (Sempre no fim de todos os filtros)
+  const de = (pagina - 1) * tamanhoLote;
+  const ate = de + tamanhoLote - 1;
+  
+  query = query
+    .order("consumed_at", { ascending: false }) // Mantém a ordenação igual ao seu original
+    .range(de, ate); 
+
+  // 6. Executar a consulta
+  const { data, error } = await query;
+
+  if (error) {
+    console.error("Erro ao carregar lote de exportação:", error);
+    throw error;
+  }
+
+  return data ?? [];
+}
+

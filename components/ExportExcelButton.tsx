@@ -1,46 +1,77 @@
 "use client";
 
-import * as XLSX from "xlsx";
-import type { ReportRow } from "./ExportCsvButton";
+import { useState } from "react";
 
-export default function ExportExcelButton({ rows }: { rows: ReportRow[] }) {
-  const handleExport = () => {
-    const dadosPlanilha = rows.map((r) => ({
-      "No Interno": r.codigo,
-      "Nome do colaborador": r.colaborador,
-      Empresa: r.empresa,
-      "Tipo de refeicao": r.tipo,
-      Cantina: r.cantina,
-      Data: r.data,
-      Hora: r.hora,
-    }));
+interface ExportButtonProps {
+  clientId: string;
+  dateStart: string;
+  dateEnd: string;
+  cantina: string;
+  empresa: string;
+}
 
-    const planilha = XLSX.utils.json_to_sheet(dadosPlanilha);
+export default function ExportExcelButton({ clientId, dateStart, dateEnd, cantina, empresa }: ExportButtonProps) {
+  const [exportando, setExportando] = useState(false);
 
-    // Ajusta largura das colunas para melhor leitura
-    planilha["!cols"] = [
-      { wch: 12 }, // No Interno
-      { wch: 30 }, // Nome do colaborador
-      { wch: 22 }, // Empresa
-      { wch: 22 }, // Tipo de refeicao
-      { wch: 18 }, // Cantina
-      { wch: 12 }, // Data
-      { wch: 10 }, // Hora
-    ];
+  const lidarComExportacao = async () => {
+    // Impede cliques duplos acidentais
+    if (exportando) return; 
+    
+    setExportando(true);
 
-    const livro = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(livro, planilha, "Relatorio");
+    try {
+      const params = new URLSearchParams({ clientId, dateStart, dateEnd, cantina, empresa });
+      
+      // 1. Faz o pedido assíncrono para a API
+      const resposta = await fetch(`/api/exportar-excel?${params.toString()}`);
 
-    const nomeArquivo = `relatorio-icantina-${new Date().toISOString().slice(0, 10)}.xlsx`;
-    XLSX.writeFile(livro, nomeArquivo);
+      if (!resposta.ok) {
+        throw new Error("Não foi possível gerar o ficheiro no servidor.");
+      }
+
+      // 2. Converte a resposta em binário (Blob)
+      const blob = await resposta.blob();
+
+      // 3. Cria um link virtual temporário para disparar o download nativo
+      const urlFicheiro = window.URL.createObjectURL(blob);
+      const linkVirtual = document.createElement("a");
+      linkVirtual.href = urlFicheiro;
+      
+      // Define o nome exato do ficheiro no download
+      linkVirtual.download = `Relatorio_Refeicoes_${dateStart}_${dateEnd}.xlsx`;
+      
+      // Simula o clique e limpa a memória do browser
+      document.body.appendChild(linkVirtual);
+      linkVirtual.click();
+      document.body.removeChild(linkVirtual);
+      window.URL.revokeObjectURL(urlFicheiro);
+
+    } catch (erro) {
+      console.error("Erro ao descarregar Excel:", erro);
+      alert("Ocorreu um erro ao exportar o relatório. Por favor, tente novamente.");
+    } finally {
+      // ✅ O botão só volta ao normal quando o processamento e o download terminarem a 100%
+      setExportando(false);
+    }
   };
 
   return (
     <button
-      onClick={handleExport}
-      className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-brand-greenDark shadow-sm hover:bg-slate-50"
+      onClick={lidarComExportacao}
+      disabled={exportando}
+      className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition-all hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
     >
-      📊 Exportar Excel
+      {exportando ? (
+        <>
+          <div className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+          A processar...
+        </>
+      ) : (
+        "📊 Exportar Excel"
+      )}
     </button>
   );
 }
+
+
+ 
