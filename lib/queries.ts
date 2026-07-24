@@ -466,12 +466,15 @@ export async function getDistinctCantinasFromMealLog(clientId: string) {
 }
 
 
+
 export async function getMealLogsForReport(
   clientId: string,
   dateStart: string,
   dateEnd: string,
   cantina?: string,
-  empresaFiltro?: string // Novo parâmetro adicionado para o filtro cruzado
+  empresaFiltro?: string,
+  page: number = 1,
+  pageSize: number = 50
 ) {
   const inicioDia = new Date(dateStart);
   inicioDia.setHours(0, 0, 0, 0);
@@ -479,68 +482,148 @@ export async function getMealLogsForReport(
   const fimDia = new Date(dateEnd);
   fimDia.setHours(23, 59, 59, 999);
 
-  // --- PASSO 1: Se houver filtro de empresa, descobrimos quais colaboradores pertencem a ela ---
   let idsColaboradoresFiltrados: string[] | null = null;
 
   if (empresaFiltro && empresaFiltro !== "todas") {
-    const { data: employeesDaEmpresa, error: errEmp } = await supabaseAdmin
+    const { data: employeesDaEmpresa, error: errEmp } =
+      await supabaseAdmin
+        .from("employees")
+        .select("client_entity_id")
+        .eq("client_id", clientId)
+        .eq("empresa_client_id", empresaFiltro)
+        .eq("is_deleted", false);
+
+    if (errEmp) throw errEmp;
+
+    idsColaboradoresFiltrados =
+      employeesDaEmpresa?.length
+        ? employeesDaEmpresa.map(
+            (e) => e.client_entity_id
+          )
+        : ["nenhum"];
+  }
+
+  let query = supabaseAdmin
+    .from("meal_log")
+    .select(
+      "id, employee_id, meal_type_id, cantina, consumed_at",
+      { count: "exact" }
+    )
+    .eq("is_deleted", false)
+    .eq("client_id", clientId)
+    .gte("consumed_at", inicioDia.toISOString())
+    .lte("consumed_at", fimDia.toISOString());
+
+  if (
+    cantina &&
+    cantina.toLowerCase() !== "todas"
+  ) {
+    query = query.eq(
+      "cantina",
+      cantina.trim()
+    );
+  }
+
+  if (idsColaboradoresFiltrados) {
+    query = query.in(
+      "employee_id",
+      idsColaboradoresFiltrados
+    );
+  }
+
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  const { data, count, error } =
+    await query
+      .order("consumed_at", {
+        ascending: false,
+      })
+      .range(from, to);
+
+  if (error) throw error;
+
+  return {
+    rows: data ?? [],
+    total: count ?? 0,
+  };
+}
+
+export async function getMealLogsForExport(
+  clientId: string,
+  dateStart: string,
+  dateEnd: string,
+  cantina?: string,
+  empresaFiltro?: string
+) {
+  let idsColaboradoresFiltrados: string[] | null = null;
+
+  if (empresaFiltro && empresaFiltro !== "todas") {
+    const { data } = await supabaseAdmin
       .from("employees")
       .select("client_entity_id")
       .eq("client_id", clientId)
       .eq("empresa_client_id", empresaFiltro)
       .eq("is_deleted", false);
 
-    if (errEmp) throw errEmp;
-    
-    // Mapeia os IDs válidos. Se a empresa não tiver ninguém, criamos um array com uma string vazia para a query retornar zero registros de forma segura
-    idsColaboradoresFiltrados = employeesDaEmpresa && employeesDaEmpresa.length > 0
-      ? employeesDaEmpresa.map((e) => e.client_entity_id)
-      : ["nenhum_id_encontrado_vazio"];
+    idsColaboradoresFiltrados =
+      data?.map(e => e.client_entity_id) ?? [];
   }
 
   const meals = [];
-  let paginaMeals = 0;
-  let temMaisMeals = true;
-  const tamanhoPaginaMeals = 1000;
+  let page = 0;
+  const PAGE_SIZE = 1000;
+  let hasMore = true;
 
-  // --- PASSO 2: Loop exaustivo de varrimento com aplicação de filtros combinados ---
-  while (temMaisMeals) {
+  while (hasMore) {
     let query = supabaseAdmin
       .from("meal_log")
-      .select("id, employee_id, meal_type_id, cantina, consumed_at")
-      .eq("is_deleted", false)
+      .select(
+        "id, employee_id, meal_type_id, cantina, consumed_at"
+      )
       .eq("client_id", clientId)
-      .gte("consumed_at", inicioDia.toISOString())
-      .lte("consumed_at", fimDia.toISOString());
+      .eq("is_deleted", false)
+      .gte("consumed_at", `${dateStart}T00:00:00`)
+      .lte("consumed_at", `${dateEnd}T23:59:59`);
 
-    // 1. Aplicação segura do filtro de Cantina (Tratando caixa alta/baixa do formulário)
-    if (cantina && cantina.toLowerCase() !== "todas") {
-      query = query.eq("cantina", cantina.trim());
+    if (
+      cantina &&
+      cantina !== "todas"
+    ) {
+      query = query.eq(
+        "cantina",
+        cantina.trim()
+      );
     }
 
-    // 2. Aplicação do filtro de Empresa restrito via lista de IDs do Passo 1
-    if (idsColaboradoresFiltrados !== null) {
-      query = query.in("employee_id", idsColaboradoresFiltrados);
+    if (idsColaboradoresFiltrados) {
+      query = query.in(
+        "employee_id",
+        idsColaboradoresFiltrados
+      );
     }
 
-    const { data: lote, error } = await query
-      .order("consumed_at", { ascending: false })
-      .range(paginaMeals * tamanhoPaginaMeals, (paginaMeals + 1) * tamanhoPaginaMeals - 1);
+    const { data, error } = await query
+      .order("consumed_at", {
+        ascending: false,
+      })
+      .range(
+        page * PAGE_SIZE,
+        ((page + 1) * PAGE_SIZE) - 1
+      );
 
     if (error) throw error;
 
-    if (!lote || lote.length === 0) {
-      temMaisMeals = false;
+    const lote = data ?? [];
+
+    meals.push(...lote);
+
+    if (lote.length < PAGE_SIZE) {
+      hasMore = false;
     } else {
-      meals.push(...lote);
-      if (lote.length < tamanhoPaginaMeals) {
-        temMaisMeals = false;
-      } else {
-        paginaMeals++;
-      }
+      page++;
     }
   }
 
   return meals;
 }
-

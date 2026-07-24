@@ -7,6 +7,7 @@ import {
   getEmpresas,
   getDistinctCantinasFromMealLog,
   getCantinas,
+  getMealLogsForExport,
 } from "@/lib/queries";
 import DateRangeFilter from "@/components/DateRangeFilter";
 import ExportCsvButton, { type ReportRow } from "@/components/ExportCsvButton";
@@ -24,7 +25,6 @@ function TabelaLoading() {
     </div>
   );
 }
-
 
 async function CantinaSelect({
   clientId,
@@ -96,7 +96,8 @@ interface PageProps {
 
 
 async function RelatoriosConteudo({
-  clientId,
+ 
+ clientId,
   dateStart,
   dateEnd,
   cantinaFiltro,
@@ -110,77 +111,157 @@ async function RelatoriosConteudo({
   empresaFiltro: string;
   paginaAtiva: number;
 }) {
-  const [todosLogs, employees, mealTypes, empresas] = await Promise.all([
-    getMealLogsForReport(clientId, dateStart, dateEnd, cantinaFiltro),
-    getEmployees(clientId),
-    getMealTypesMap(clientId),
-    getEmpresas(clientId),
-  ]);
+  const ITENS_POR_PAGINA = 50;
+
+  const [resultadoRelatorio, logsExportacao, employees, mealTypes, empresas] =
+    await Promise.all([
+      getMealLogsForReport(
+        clientId,
+        dateStart,
+        dateEnd,
+        cantinaFiltro,
+        empresaFiltro,
+        paginaAtiva,
+        ITENS_POR_PAGINA
+      ),
+
+      
+      getMealLogsForExport(
+          clientId,
+          dateStart,
+          dateEnd,
+          cantinaFiltro,
+          empresaFiltro
+        ),
+  
+      getEmployees(clientId),
+      getMealTypesMap(clientId),
+      getEmpresas(clientId),
+    ]);
+
+  const todosLogs = resultadoRelatorio.rows;
+  const totalRegistos = resultadoRelatorio.total;
 
   const employeeNames: Record<string, string> = {};
   const employeeCodigos: Record<string, string> = {};
   const employeeEmpresaId: Record<string, string> = {};
+
   for (const e of employees) {
     employeeNames[e.client_entity_id] = e.nome;
     employeeCodigos[e.client_entity_id] = e.codigo ?? "-";
-    employeeEmpresaId[e.client_entity_id] = e.empresa_client_id ?? "";
+    employeeEmpresaId[e.client_entity_id] =
+      e.empresa_client_id ?? "";
   }
 
   const empresaNomes: Record<string, string> = {};
+
   for (const emp of empresas) {
     empresaNomes[emp.client_entity_id] = emp.nome;
   }
 
-  const logsValidos = todosLogs.filter((l) => employeeNames[l.employee_id] !== undefined);
+  const rows: ReportRow[] = todosLogs
+    .filter(
+      (l) =>
+        employeeNames[l.employee_id] !== undefined
+    )
+    .map((l) => {
+      const dataHora = new Date(l.consumed_at);
 
-   // 2. FILTRO DUPLO CRUZADO: Aplica o filtro de Empresa E o filtro de Cantina simultaneamente
-  const logsFiltradosCombinados = logsValidos.filter((l) => {
-    // Validação da Empresa
-    const passaEmpresa = empresaFiltro === "todas" || employeeEmpresaId[l.employee_id] === empresaFiltro;
-    
-    // Validação da Cantina (Normalizada com .toLowerCase() e .trim() para evitar falhas por espaços ocultos)
-    const passaCantina = cantinaFiltro === "todas" || 
-      (l.cantina && l.cantina.trim().toLowerCase() === cantinaFiltro.trim().toLowerCase());
+      return {
+        codigo:
+          employeeCodigos[l.employee_id] ?? "-",
 
-    // O registo só entra na tabela se passar em ambos os critérios
-    return passaEmpresa && passaCantina;
-  });
+        colaborador:
+          employeeNames[l.employee_id] ?? "-",
 
-  // 3. Mapeia os dados finais a partir do array perfeitamente filtrado
-  const rows: ReportRow[] = logsFiltradosCombinados.map((l) => {
-    const dataHora = new Date(l.consumed_at);
-    return {
-      codigo: employeeCodigos[l.employee_id] ?? "-",
-      colaborador: employeeNames[l.employee_id],
-      empresa: empresaNomes[employeeEmpresaId[l.employee_id]] ?? "-",
-      tipo: mealTypes.get(String(l.meal_type_id))?.nome ?? String(l.meal_type_id),
-      cantina: l.cantina || "Principal",
-      data: dataHora.toLocaleDateString("pt-MZ"),
-      hora: dataHora.toLocaleTimeString("pt-MZ"),
-    };
-  });
+        empresa:
+          empresaNomes[
+            employeeEmpresaId[l.employee_id]
+          ] ?? "-",
 
-  const totalRegistos = rows.length;
-  const ITENS_POR_PAGINA = 50;
-  const totalPaginas = Math.ceil(totalRegistos / ITENS_POR_PAGINA) || 1;
-  const paginaCorrente = Math.min(Math.max(paginaAtiva, 1), totalPaginas);
+        tipo:
+          mealTypes.get(
+            String(l.meal_type_id)
+          )?.nome ??
+          String(l.meal_type_id),
 
-  const indiceInicial = (paginaCorrente - 1) * ITENS_POR_PAGINA;
-  const indiceFinal = indiceInicial + ITENS_POR_PAGINA;
-  const linhasPaginadas = rows.slice(indiceInicial, indiceFinal);
+        cantina: l.cantina || "Principal",
 
-  const mostrandoDe = totalRegistos > 0 ? indiceInicial + 1 : 0;
-  const mostrandoA = Math.min(indiceFinal, totalRegistos);
+        data:
+          dataHora.toLocaleDateString("pt-MZ"),
 
-  const buildPageUrl = (novaPagina: number) => {
+        hora:
+          dataHora.toLocaleTimeString("pt-MZ"),
+      };
+    });
+  
+  //Exportação Excel de todos os dados
+  const rowsExportacao: ReportRow[] = logsExportacao
+    .filter(
+      (l) =>
+        employeeNames[l.employee_id] !== undefined
+    )
+    .map((l) => {
+      const dataHora = new Date(l.consumed_at);
+
+      return {
+        codigo:
+          employeeCodigos[l.employee_id] ?? "-",
+
+        colaborador:
+          employeeNames[l.employee_id] ?? "-",
+
+        empresa:
+          empresaNomes[
+            employeeEmpresaId[l.employee_id]
+          ] ?? "-",
+
+        tipo:
+          mealTypes.get(
+            String(l.meal_type_id)
+          )?.nome ??
+          String(l.meal_type_id),
+
+        cantina: l.cantina || "Principal",
+
+        data:
+          dataHora.toLocaleDateString("pt-MZ"),
+
+        hora:
+          dataHora.toLocaleTimeString("pt-MZ"),
+      };
+    });
+
+  const totalPaginas =
+    Math.ceil(totalRegistos / ITENS_POR_PAGINA) || 1;
+
+  const paginaCorrente = Math.min(
+    Math.max(paginaAtiva, 1),
+    totalPaginas
+  );
+
+  const mostrandoDe =
+    totalRegistos > 0
+      ? (paginaCorrente - 1) * ITENS_POR_PAGINA + 1
+      : 0;
+
+  const mostrandoA = Math.min(
+    paginaCorrente * ITENS_POR_PAGINA,
+    totalRegistos
+  );
+
+  const buildPageUrl = (
+    novaPagina: number
+  ) => {
     return `/relatorios?dateStart=${dateStart}&dateEnd=${dateEnd}&cantina=${cantinaFiltro}&empresa=${empresaFiltro}&page=${novaPagina}`;
   };
+
 
   return (
     <div className="relative mt-6 animate-[fadeIn_0.2s_ease-out]">
       <div className="absolute right-0 -top-1 z-10 flex gap-2">
-        <ExportCsvButton rows={rows} />
-        <ExportExcelButton rows={rows} />
+        <ExportCsvButton rows={rowsExportacao} />
+        <ExportExcelButton rows={rowsExportacao} />
       </div>
 
       <div className="mb-4 rounded-xl bg-white px-5 py-3 shadow-sm border border-slate-50 inline-block">
@@ -203,24 +284,53 @@ async function RelatoriosConteudo({
             </tr>
           </thead>
           <tbody>
-            {linhasPaginadas.map((r, i) => (
-              <tr key={i} className="border-t border-slate-100 transition-colors hover:bg-slate-50/50">
-                <td className="px-5 py-3 font-medium text-slate-700">{r.codigo}</td>
-                <td className="px-5 py-3 text-slate-900 font-semibold">{r.colaborador}</td>
-                <td className="px-5 py-3 text-slate-600">{r.empresa}</td>
-                <td className="px-5 py-3 text-slate-600">{r.tipo}</td>
-                <td className="px-5 py-3 text-slate-600">{r.cantina}</td>
-                <td className="px-5 py-3 text-slate-500">{r.data}</td>
-                <td className="px-5 py-3 text-slate-500">{r.hora}</td>
-              </tr>
-            ))}
-            {linhasPaginadas.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-5 py-8 text-center text-slate-400">
-                  Nenhum registo encontrado para os filtros selecionados.
-                </td>
-              </tr>
-            )}
+           
+{rows.map((r, i) => (
+            <tr
+              key={i}
+              className="border-t border-slate-100 transition-colors hover:bg-slate-50/50"
+            >
+              <td className="px-5 py-3 font-medium text-slate-700">
+                {r.codigo}
+              </td>
+
+              <td className="px-5 py-3 font-semibold text-slate-900">
+                {r.colaborador}
+              </td>
+
+              <td className="px-5 py-3 text-slate-600">
+                {r.empresa}
+              </td>
+
+              <td className="px-5 py-3 text-slate-600">
+                {r.tipo}
+              </td>
+
+              <td className="px-5 py-3 text-slate-600">
+                {r.cantina}
+              </td>
+
+              <td className="px-5 py-3 text-slate-500">
+                {r.data}
+              </td>
+
+              <td className="px-5 py-3 text-slate-500">
+                {r.hora}
+              </td>
+            </tr>
+          ))}
+
+          {rows.length === 0 && (
+            <tr>
+              <td
+                colSpan={7}
+                className="px-5 py-8 text-center text-slate-400"
+              >
+                Nenhum registo encontrado para os filtros selecionados.
+              </td>
+            </tr>
+          )}
+
           </tbody>
         </table>
 
