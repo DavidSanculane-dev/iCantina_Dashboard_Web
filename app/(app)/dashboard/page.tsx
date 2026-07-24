@@ -67,12 +67,22 @@ async function DashboardConteudo({
     getMealTypesMap(clientId),
   ]);
 
-  const distribuicao = Array.from(summary.distribuicaoPorTipo.entries()).map(
+  // ✅ CORREÇÃO 1: Proteção contra mapa indefinido ou nulo
+  const mapaDistribuicao = summary?.distribuicaoPorTipo ? 
+    (summary.distribuicaoPorTipo instanceof Map ? summary.distribuicaoPorTipo : new Map(Object.entries(summary.distribuicaoPorTipo))) 
+    : new Map();
+
+  const distribuicao = Array.from(mapaDistribuicao.entries()).map(
     ([tipoId, total]) => ({
-      nome: mealTypes.get(tipoId)?.nome ?? `Tipo ${tipoId}`,
-      total,
+      nome: mealTypes?.get(String(tipoId))?.nome ?? `Tipo ${tipoId}`,
+      total: Number(total) || 0,
     })
   );
+
+   // ✅ CORREÇÃO 2: Garantir que arrays complexos como tendência e porCantina 
+  // são arrays puros e seguros antes de enviar para os gráficos do Client
+  const dadosTendencia = summary?.tendencia ? JSON.parse(JSON.stringify(summary.tendencia)) : [];
+  const dadosCantina = summary?.porCantina ? JSON.parse(JSON.stringify(summary.porCantina)) : [];
 
   return (
     <div className="space-y-6 mt-6 animate-[fadeIn_0.2s_ease-out]">
@@ -80,23 +90,23 @@ async function DashboardConteudo({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Total de refeições (período)"
-          value={summary.totalRefeicoes.toLocaleString("pt-MZ")}
+          value={(summary?.totalRefeicoes ?? 0).toLocaleString("pt-MZ")}
           icon="📈"
           bg="bg-lime-50/50"
         />
         <StatCard
           label="Colaboradores atendidos"
-          value={summary.colaboradoresUnicos.toLocaleString("pt-MZ")}
+          value={(summary?.colaboradoresUnicos ?? 0).toLocaleString("pt-MZ")}
           icon="👥"
         />
         <StatCard
           label="Custo médio de refeição"
-          value={formatMT(summary.custoMedio)}
+          value={formatMT(summary?.custoMedio ?? 0)}
           icon="🔄"
         />
         <StatCard
           label="Total em valor"
-          value={formatMT(summary.totalValor)}
+          value={formatMT(summary?.totalValor ?? 0)}
           icon="🏦"
           bg="bg-rose-50/50"
         />
@@ -108,7 +118,8 @@ async function DashboardConteudo({
           <h2 className="mb-3 font-semibold text-slate-700">
             Tendência de consumo de refeições
           </h2>
-          <TrendChart data={summary.tendencia} />
+          {/* Passa dados 100% limpos e seguros contra quebras de serialização */}
+          <TrendChart data={dadosTendencia} />
         </div>
         <div className="rounded-2xl bg-white p-5 shadow-sm border border-slate-50 flex flex-col justify-between">
           <h2 className="mb-3 font-semibold text-slate-700">
@@ -123,7 +134,7 @@ async function DashboardConteudo({
       {/* Gráfico Inferior por Cantina */}
       <div className="rounded-2xl bg-white p-5 shadow-sm border border-slate-50">
         <h2 className="mb-3 font-semibold text-slate-700">Refeições por cantina</h2>
-        <CantinaBarChart data={summary.porCantina} />
+        <CantinaBarChart data={dadosCantina} />
       </div>
     </div>
   );
