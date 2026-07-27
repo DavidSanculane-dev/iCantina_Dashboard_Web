@@ -345,22 +345,24 @@ export default async function RelatoriosPage({ searchParams }: PageProps) {
             extra={
           // Alinhámos os itens ao final (items-end) para que o filtro de Empresa 
           // fique perfeitamente alinhado na horizontal com os novos botões das Cantinas
-          <div className="flex items-end gap-5">
+          <div className="flex flex-col md:flex-row items-start md:items-end gap-4 md:gap-5 w-full">
             
             {/* ✅ SUBSTITUIÇÃO: O filtro clássico deu lugar aos botões modernos */}
-            <div>
+            <div className="w-full md:w-auto">
               <Suspense fallback={<div className="h-9 w-48 animate-pulse rounded-xl bg-slate-100" />}>
                 <FiltroCantinasChips />
               </Suspense>
             </div>
 
             {/* O filtro de Empresa mantém-se exatamente igual à sua estrutura original */}
-            <div>
+            <div className="w-full md:w-auto flex flex-col">
               <label className="mb-1 block text-xs font-medium text-slate-500 uppercase tracking-wider">
                 Empresa
               </label>
               <Suspense fallback={<SelectLoading />}>
-                <EmpresaSelect clientId={session.clientId} empresaFiltro={empresaFiltro} />
+                <div className="w-full md:w-56"> {/* Embrulha para controlar o tamanho máximo do Select se necessário */}
+                  <EmpresaSelect clientId={session.clientId} empresaFiltro={empresaFiltro} />
+                </div>
               </Suspense>
             </div>
 
