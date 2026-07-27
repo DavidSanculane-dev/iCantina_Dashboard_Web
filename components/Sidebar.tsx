@@ -20,7 +20,8 @@ export default function Sidebar({
   const pathname = usePathname();
 
   return (
-    <aside className="flex h-screen w-64 flex-col justify-between bg-brand-green text-white">
+    // ✅ ALTERAÇÃO: Adicionado 'hidden md:flex' para ocultar em mobile e mostrar no PC
+    <aside className="hidden md:flex h-screen w-64 flex-col justify-between bg-brand-green text-white shrink-0">
       <div>
         <div className="flex items-center gap-2 px-6 py-6 text-xl font-bold">
           <span>🍽️</span> iCantina
@@ -59,3 +60,4 @@ export default function Sidebar({
     </aside>
   );
 }
+
