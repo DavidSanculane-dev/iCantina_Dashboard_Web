@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
           empresa: empresaNomes[employeeEmpresaId[l.employee_id]] ?? "-",
           tipo: mealTypes.get(String(l.meal_type_id))?.nome ?? String(l.meal_type_id),
           cantina: l.cantina || "Principal",
-          data: dataHora.toLocaleDateString("pt-MZ"),
+          data: dataHora,
           hora: dataHora.toLocaleTimeString("pt-MZ")
         });
 
@@ -116,7 +116,11 @@ export async function GET(request: NextRequest) {
             left: { style: 'thin', color: { argb: 'FFE0E0E0' } },
             right: { style: 'thin', color: { argb: 'FFE0E0E0' } }
           };
-
+          
+           // 2. CORREÇÃO: Se for a coluna 6 (Data), aplicar a máscara de formatação do Excel
+          if (colNumber === 6) {
+            cell.numFmt = 'dd/mm/yyyy'; // Define o formato visual no Excel, mas mantendo o valor como data/número
+          }
           if (colNumber === 2 || colNumber === 3) {
             cell.alignment = { horizontal: "left", vertical: "middle" };
           } else {
